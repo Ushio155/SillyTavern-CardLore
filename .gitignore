@@ -1,0 +1,12 @@
+# 依赖与构建产物不入库
+node_modules/
+dist/
+build/
+
+# 日志与系统文件
+*.log
+.DS_Store
+Thumbs.db
+
+# 本地安装副本（本目录即插件本体，无需额外 data）
+data/

@@ -1,0 +1,11 @@
+{
+    "display_name": "CardLore 角色卡·世界书生成器",
+    "loading_order": 250,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "cardlore.css",
+    "author": "CardLore",
+    "version": "1.0.0",
+    "homePage": "https://github.com/Ushio155/SillyTavern-CardLore"
+}

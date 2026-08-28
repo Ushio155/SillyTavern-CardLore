@@ -1,0 +1,377 @@
+/* CardLore 角色卡·世界书生成器 */
+
+/* 「新建角色」左侧的一键生成按钮：琥珀色更醒目 */
+#cardlore_quick_button {
+    color: #f2c94c;
+}
+
+#cardlore_quick_button:hover {
+    color: var(--SmartThemeBodyColor);
+    transform: scale(1.1);
+}
+
+#cardlore_wand_container .extensionsMenuExtensionButton:hover {
+    color: var(--SmartThemeBodyColor);
+}
+
+/* 「AI 适配」：透明背景 + 琥珀色字体（重置 .menu_button 的 grayscale 滤镜，避免颜色被去饱和） */
+#cardlore_ai {
+    color: #f2c94c !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    filter: grayscale(0);
+}
+
+#cardlore_ai:hover {
+    color: #ffd76a !important;
+}
+
+/* 「清空预览」：红底白字（重置 grayscale 滤镜 + !important 防主题覆盖） */
+#cardlore_clear {
+    background: #d94b4b !important;
+    background-color: #d94b4b !important;
+    color: #ffffff !important;
+    filter: grayscale(0);
+}
+
+#cardlore_clear:hover {
+    background: #e05a5a !important;
+    background-color: #e05a5a !important;
+}
+
+.cardlore_popup {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.cardlore_panel {
+    width: min(880px, 96vw);
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--SmartThemeBlurTintColor, #1e1e1e);
+    border: 1px solid var(--SmartThemeBorderColor, #444);
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.cardlore_header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    font-weight: 600;
+    background: var(--SmartThemeQuoteColor, #2a2a2a);
+    border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
+}
+
+.cardlore_close {
+    cursor: pointer;
+    font-size: 1.1em;
+    padding: 4px 8px;
+}
+
+.cardlore_close:hover {
+    color: #ff6b6b;
+}
+
+.cardlore_body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    overflow-y: auto;
+}
+
+.cardlore_hint {
+    font-size: 0.85em;
+    opacity: 0.85;
+}
+
+.cardlore_input {
+    width: 100%;
+    min-height: 180px;
+    resize: vertical;
+    font-family: var(--monoFontFamily, monospace);
+    font-size: 0.9em;
+    white-space: pre;
+}
+
+.cardlore_toolbar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.cardlore_toolbar .menu_button {
+    cursor: pointer;
+}
+
+.cardlore_toolbar .menu_button.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.cardlore_status {
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 0.85em;
+    display: none;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.cardlore_status_info { display: block; background: rgba(70, 130, 220, 0.18); }
+.cardlore_status_warn { display: block; background: rgba(230, 170, 40, 0.18); color: #eec357; }
+.cardlore_status_error { display: block; background: rgba(230, 60, 60, 0.18); color: #ff8a8a; }
+
+/* AI 适配设置区 */
+.cardlore_ai_settings {
+    border: 1px solid rgba(128, 128, 128, 0.2);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.cardlore_ai_toggle {
+    cursor: pointer;
+    padding: 6px 10px;
+    font-size: 0.85em;
+    background: rgba(128, 128, 128, 0.12);
+    user-select: none;
+}
+
+.cardlore_ai_toggle:hover {
+    background: rgba(128, 128, 128, 0.2);
+}
+
+.cardlore_ai_settings_body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px;
+    font-size: 0.85em;
+}
+
+.cardlore_ai_settings_body .flex-container {
+    gap: 6px;
+}
+
+.cardlore_ai_settings_body label {
+    white-space: nowrap;
+}
+
+.cardlore_ai_prompt {
+    min-height: 120px;
+    resize: vertical;
+    font-family: var(--monoFontFamily, monospace);
+    font-size: 0.85em;
+}
+
+/* AI 预设方案 */
+.cardlore_ai_presets {
+    border: 1px dashed rgba(128, 128, 128, 0.35);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.cardlore_ai_presets_toggle {
+    cursor: pointer;
+    padding: 5px 8px;
+    font-size: 0.85em;
+    background: rgba(128, 128, 128, 0.1);
+    user-select: none;
+}
+
+.cardlore_ai_presets_toggle:hover {
+    background: rgba(128, 128, 128, 0.18);
+}
+
+.cardlore_ai_presets_body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 8px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.cardlore_ai_preset {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 8px;
+    border: 1px solid rgba(128, 128, 128, 0.2);
+    border-radius: 6px;
+}
+
+.cardlore_ai_preset:hover {
+    border-color: rgba(128, 128, 128, 0.45);
+}
+
+.cardlore_ai_preset_info {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.cardlore_ai_preset_url {
+    font-family: var(--monoFontFamily, monospace);
+    font-size: 0.8em;
+    opacity: 0.85;
+    word-break: break-all;
+}
+
+.cardlore_ai_preset_models {
+    font-size: 0.8em;
+    opacity: 0.7;
+}
+
+.cardlore_ai_preset_note {
+    font-size: 0.75em;
+    opacity: 0.6;
+}
+
+.cardlore_ai_preset_use {
+    flex-shrink: 0;
+    cursor: pointer;
+    font-size: 0.85em;
+    padding: 3px 10px;
+    white-space: nowrap;
+}
+
+.cardlore_preview {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.cardlore_block {
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(128, 128, 128, 0.08);
+    border: 1px solid rgba(128, 128, 128, 0.15);
+    overflow-x: auto;
+}
+
+.cardlore_block h4 {
+    margin: 2px 0 6px;
+    font-size: 0.95em;
+}
+
+.cardlore_block_ok { border-color: #4caf50; }
+.cardlore_block_error { border-color: #e04a4a; background: rgba(224, 74, 74, 0.12); }
+.cardlore_block_warn { border-color: #e0b34a; background: rgba(224, 179, 74, 0.10); }
+
+.cardlore_block ul {
+    margin: 4px 0 0;
+    padding-left: 20px;
+    font-size: 0.85em;
+}
+
+.cardlore_table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85em;
+}
+
+.cardlore_table th,
+.cardlore_table td {
+    border: 1px solid rgba(128, 128, 128, 0.2);
+    padding: 3px 8px;
+    text-align: left;
+    vertical-align: top;
+    word-break: break-word;
+}
+
+.cardlore_table th {
+    background: rgba(128, 128, 128, 0.15);
+    font-weight: 600;
+}
+
+/* ================= 移动端适配（窄屏/触屏） ================= */
+@media (max-width: 768px) {
+    .cardlore_popup {
+        padding: 6px;
+        align-items: flex-start;      /* 顶部对齐，避免键盘弹出挤压 */
+    }
+
+    .cardlore_panel {
+        width: 100vw;
+        max-height: 96vh;
+        border-radius: 10px;
+    }
+
+    .cardlore_header {
+        padding: 12px 10px;
+        font-size: 0.95em;
+    }
+
+    .cardlore_close {
+        padding: 8px 12px;            /* 更大的触控区 */
+        font-size: 1.2em;
+    }
+
+    .cardlore_body {
+        padding: 10px;
+        gap: 10px;
+    }
+
+    .cardlore_input {
+        min-height: 160px;
+        font-size: 16px;              /* 防 iOS 聚焦自动放大 */
+    }
+
+    .cardlore_toolbar {
+        gap: 6px;
+    }
+
+    .cardlore_toolbar .menu_button {
+        flex: 1 1 auto;
+        padding: 10px 6px;            /* 触控友好 */
+        font-size: 0.92em;
+        min-height: 40px;
+    }
+
+    .cardlore_ai_toggle,
+    .cardlore_ai_presets_toggle {
+        padding: 10px 8px;
+    }
+
+    .cardlore_ai_preset {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+    }
+
+    .cardlore_ai_preset_use {
+        padding: 8px 12px;
+        text-align: center;
+    }
+
+    .cardlore_ai_settings_body label {
+        white-space: normal;          /* 标签允许换行 */
+    }
+
+    .cardlore_ai_prompt {
+        min-height: 100px;
+        font-size: 16px;
+    }
+
+    .cardlore_table {
+        font-size: 0.8em;
+    }
+
+    .cardlore_table th,
+    .cardlore_table td {
+        padding: 5px 6px;
+    }
+}
