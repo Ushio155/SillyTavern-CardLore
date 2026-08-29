@@ -40,8 +40,15 @@
 }
 
 .cardlore_popup {
+    /* 注意：不能用 inset: 0 拉伸 —— ST 核心 CSS 给 <html> 加了 -webkit-transform: translateZ(0)，
+       使 html 成为 fixed 后代的包含块，手机视口下 inset:0 会塌缩（实测仅剩 padding 高度）。
+       必须用显式视口单位（vw/vh 不受 transform 祖先影响）。 */
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;              /* 动态视口（移动端地址栏伸缩），不支持时回退 vh */
     z-index: 99999;
     background: rgba(0, 0, 0, 0.55);
     display: flex;
@@ -87,7 +94,10 @@
     flex-direction: column;
     gap: 8px;
     padding: 12px 14px;
+    min-height: 0;                 /* 关键：允许 flex 收缩，overflow-y 才真正生效（否则内容超出会被面板裁掉且无法滚动） */
+    flex: 1 1 auto;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .cardlore_hint {
@@ -127,8 +137,13 @@
 
 /* 全屏编辑遮罩 */
 .cardlore_expand_overlay {
+    /* 与 .cardlore_popup 同理：显式视口单位，规避 ST 对 html 的 translateZ(0) 造成的 fixed 塌缩 */
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
     z-index: 100000;
     display: flex;
     flex-direction: column;
@@ -378,13 +393,21 @@
 @media (max-width: 768px) {
     .cardlore_popup {
         padding: 6px;
+        padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
         align-items: flex-start;      /* 顶部对齐，避免键盘弹出挤压 */
+        overflow-y: auto;             /* 兜底：面板万一超出屏幕，遮罩层本身也可滚动 */
     }
 
     .cardlore_panel {
         width: 100vw;
         max-height: 96vh;
+        max-height: 96dvh;            /* 动态视口高度，适配移动端地址栏/键盘伸缩 */
         border-radius: 10px;
+    }
+
+    .cardlore_body {
+        flex: 1 1 auto;
+        min-height: 0;
     }
 
     .cardlore_header {
