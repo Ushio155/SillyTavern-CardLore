@@ -2,6 +2,12 @@
 
 「填写即生成」角色卡 + 世界书生成器（SillyTavern 1.18.0 实测，兼容移动端窄屏）。
 
+## 许可与开发声明
+
+- 本插件以 **MIT 许可证** 开源（见 `LICENSE`），可自由使用、修改与再分发（保留版权声明即可）。
+- 本插件由 **DeepSeek Harness**（AI 编程助手）辅助开发，详细声明见 [`AI-DISCLOSURE.md`](./AI-DISCLOSURE.md)。
+- 使用本插件请同时遵守 SillyTavern 自身的许可与使用条款。
+
 ## 安装
 
 **方式 A：从 GitHub 一键安装（推荐）**
@@ -72,6 +78,7 @@ cardlore.css      # 弹窗样式（含按钮配色、移动端适配）
 src/parser.js     # 文本 → AST（行级状态机，纯函数）
 src/builder.js    # AST → 卡 V2 data + 世界书 entries（默认值对齐 1.18.0）
 src/writer.js     # 写回 ST：saveWorldInfo + /api/characters/import
+AI-DISCLOSURE.md  # AI 开发声明（DeepSeek Harness）
 ```
 
 ## 依赖的 ST 内部 API（1.18.0 实测）
