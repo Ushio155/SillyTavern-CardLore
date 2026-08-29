@@ -8,7 +8,7 @@
 ST 顶栏 → 扩展程序（魔法棒）→ 管理扩展程序 → **Install extension** → 粘贴仓库地址：
 
 ```
-https://github.com/<你的用户名>/SillyTavern-CardLore
+https://github.com/Ushio155/SillyTavern-CardLore
 ```
 
 **方式 B：手动放置**
@@ -24,7 +24,7 @@ https://github.com/<你的用户名>/SillyTavern-CardLore
 
 点击后打开生成器：
 
-1. 粘贴**任意原始文本**（无需关心插件格式）。
+1. 粘贴**任意原始文本**（无需关心插件格式）。输入框右上角「**展开**」可切换全屏编辑，方便查看和修改整段文本（编辑实时同步，`Esc` 或「完成」收起；全屏内也可直接「解析预览」）。
 2. 点「**AI 适配**」（🤖，解析预览左侧）——通过 **OpenAI 兼容接口**自动整理成插件格式并立即预览。
    - 首次使用：展开「AI 接口设置」→ 展开「**预设方案**」选择一家（DeepSeek / OpenAI / Kimi / 通义 / GLM / 硅基流动 / Groq / OpenRouter / 本地 Ollama），点「填入」自动填好地址与模型；填 API Key 后点「保存设置」。
    - 或保留「自定义 OpenAI 兼容」选项，手动填接口地址 / API Key / 模型。
@@ -72,7 +72,6 @@ cardlore.css      # 弹窗样式（含按钮配色、移动端适配）
 src/parser.js     # 文本 → AST（行级状态机，纯函数）
 src/builder.js    # AST → 卡 V2 data + 世界书 entries（默认值对齐 1.18.0）
 src/writer.js     # 写回 ST：saveWorldInfo + /api/characters/import
-PUBLISH.md        # GitHub 发布指南
 ```
 
 ## 依赖的 ST 内部 API（1.18.0 实测）
@@ -90,6 +89,7 @@ PUBLISH.md        # GitHub 发布指南
 - [ ] 刷新后，角色列表工具栏「新建角色」左侧出现琥珀色 ✨ 按钮，悬停显示"一键生成"
 - [ ] （可选）顶栏「扩展程序」魔法棒菜单内也有 ✨ 图标
 - [ ] 生成器内「AI 适配」在「解析预览」左侧；配置好接口后，粘贴任意文本点「AI 适配」能自动整理并预览
+- [ ] 输入框右上角「展开」可全屏编辑：文本实时同步、`Esc`/「完成」收起、全屏内「解析预览」可用
 - [ ] 「重置默认提示词」能恢复默认提示词
 - [ ] 「应用」→ 角色库出现新角色，且「世界书」下拉里出现 `林晚的世界书`
 - [ ] 该角色卡「深度提示」字段含角色备注内容；「替代开场白」含其余开场节点

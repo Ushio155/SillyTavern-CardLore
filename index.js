@@ -252,7 +252,10 @@ function openPopup() {
                         粘贴「特定格式」文本（【角色卡】/【世界书】/【角色书】区块 + 键: 值 + ### 条目：名称）。
                         <a id="cardlore_load_sample" href="javascript:void(0)">载入示例</a>
                     </div>
-                    <textarea id="cardlore_input" class="text_pole cardlore_input" placeholder="在此粘贴角色设定文本…"></textarea>
+                    <div class="cardlore_input_wrap">
+                        <textarea id="cardlore_input" class="text_pole cardlore_input" placeholder="在此粘贴角色设定文本…"></textarea>
+                        <div id="cardlore_expand" class="menu_button cardlore_expand" title="展开全屏编辑" data-i18n="[title]展开全屏编辑"><i class="fa-solid fa-expand"></i>&nbsp;展开</div>
+                    </div>
                     <div class="cardlore_toolbar">
                         <div id="cardlore_ai" class="menu_button"><i class="fa-solid fa-robot"></i>&nbsp;AI 适配</div>
                         <div id="cardlore_parse" class="menu_button">解析预览</div>
@@ -291,6 +294,16 @@ function openPopup() {
                     <div id="cardlore_preview" class="cardlore_preview"></div>
                 </div>
             </div>
+            <div id="cardlore_expand_overlay" class="cardlore_expand_overlay" style="display:none;">
+                <div class="cardlore_expand_header">
+                    <span class="cardlore_expand_title"><i class="fa-solid fa-expand"></i>&nbsp;原始文本 · 全屏编辑</span>
+                    <div class="cardlore_expand_actions">
+                        <div id="cardlore_expand_parse" class="menu_button"><i class="fa-solid fa-wand-magic-sparkles"></i>&nbsp;解析预览</div>
+                        <div id="cardlore_expand_close" class="menu_button menu_button_primary">完成</div>
+                    </div>
+                </div>
+                <textarea id="cardlore_expand_input" class="cardlore_expand_input" placeholder="在此编辑原始文本…"></textarea>
+            </div>
         </div>`);
     $('body').append(popup);
 
@@ -307,6 +320,30 @@ function openPopup() {
     $('#cardlore_apply').on('click', onApply);
     $('#cardlore_export').on('click', onExport);
     $('#cardlore_clear').on('click', onClearPreview);
+
+    // 展开全屏编辑：打开时同步文本，编辑实时写回主输入框，Esc / 「完成」收起
+    const $expandOverlay = $('#cardlore_expand_overlay');
+    const $expandInput = $('#cardlore_expand_input');
+    const openExpandEditor = () => {
+        $expandInput.val($('#cardlore_input').val());
+        $expandOverlay.show();
+        $expandInput.focus();
+    };
+    const closeExpandEditor = () => {
+        $('#cardlore_input').val($expandInput.val());
+        $expandOverlay.hide();
+    };
+    $('#cardlore_expand').on('click', openExpandEditor);
+    $('#cardlore_expand_close').on('click', closeExpandEditor);
+    $('#cardlore_expand_parse').on('click', () => {
+        $('#cardlore_input').val($expandInput.val());
+        onParse();
+        closeExpandEditor(); // 解析完自动收起，回到弹窗查看预览
+    });
+    $expandInput.on('input', () => $('#cardlore_input').val($expandInput.val()));
+    $(document).on('keydown.cardloreExpand', e => {
+        if (e.key === 'Escape' && $expandOverlay.is(':visible')) closeExpandEditor();
+    });
 
     // AI 设置回填与交互
     const ai = extension_settings[MODULE_NAME].ai;
@@ -458,7 +495,7 @@ function setStatus(text, type = 'info') {
 }
 
 function setBusy(busy, text) {
-    $('#cardlore_ai, #cardlore_parse, #cardlore_apply, #cardlore_export, #cardlore_clear').prop('disabled', busy).toggleClass('disabled', busy);
+    $('#cardlore_ai, #cardlore_parse, #cardlore_apply, #cardlore_export, #cardlore_clear, #cardlore_expand, #cardlore_expand_parse, #cardlore_expand_close').prop('disabled', busy).toggleClass('disabled', busy);
     if (text) setStatus(text, 'info');
 }
 
