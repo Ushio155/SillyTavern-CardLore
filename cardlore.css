@@ -55,13 +55,19 @@
     align-items: center;
     justify-content: center;
     padding: 24px;
+    /* 兜底滚动：任何情况下（面板超高/视口单位异常）弹窗本身可上下滚，保证底部功能可达 */
+    overflow-y: auto;
+    touch-action: pan-y;         /* 对抗 ST mobile-styles.css 的 body { touch-action: none } */
+    -webkit-overflow-scrolling: touch;
 }
 
 .cardlore_panel {
     width: min(880px, 96vw);
     max-height: 92vh;
+    max-height: 92dvh;
     display: flex;
     flex-direction: column;
+    margin: auto;                /* 自适应居中：空间足够时居中；空间不足时顶部对齐并允许弹窗滚动（不裁顶部） */
     background: var(--SmartThemeBlurTintColor, #1e1e1e);
     border: 1px solid var(--SmartThemeBorderColor, #444);
     border-radius: 12px;
@@ -97,6 +103,8 @@
     min-height: 0;                 /* 关键：允许 flex 收缩，overflow-y 才真正生效（否则内容超出会被面板裁掉且无法滚动） */
     flex: 1 1 auto;
     overflow-y: auto;
+    touch-action: pan-y;           /* 对抗 ST mobile-styles.css 的 body { touch-action: none } */
+    overscroll-behavior: contain;  /* 滚动到边界不冒泡给外层 */
     -webkit-overflow-scrolling: touch;
 }
 
@@ -189,6 +197,7 @@
     background: var(--SmartThemeBlurTintColor, #11121a);
     border: 1px solid var(--SmartThemeBorderColor, #444);
     color: var(--SmartThemeBodyColor, #eee);
+    touch-action: pan-y;           /* 同上：确保触摸可滚动 */
 }
 
 .cardlore_expand_input:focus {
