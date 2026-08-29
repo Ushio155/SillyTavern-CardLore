@@ -448,6 +448,7 @@
     .cardlore_input {
         min-height: 160px;
         font-size: 16px;              /* 防 iOS 聚焦自动放大 */
+        white-space: pre-wrap;        /* 长行自动换行，避免手机上横向滚动 */
     }
 
     .cardlore_expand {
@@ -455,24 +456,33 @@
         font-size: 0.92em;
     }
 
+    /* 展开编辑器：移动端全出血风格（无内边距/圆角），适配刘海屏安全区 */
     .cardlore_expand_overlay {
-        padding: 6px;
+        padding: 0;
+        gap: 0;
     }
 
     .cardlore_expand_header {
-        padding: 4px 6px;
+        padding: calc(10px + env(safe-area-inset-top, 0px)) 10px 8px;
     }
 
     .cardlore_expand_actions .menu_button {
         flex: 1 1 auto;
-        min-height: 40px;
-        padding: 10px 12px;
+        min-height: 42px;
+        padding: 8px 14px;
         font-size: 0.95em;
         text-align: center;
     }
 
     .cardlore_expand_input {
         font-size: 16px;              /* 防 iOS 聚焦自动放大 */
+        white-space: pre-wrap;        /* 长行自动换行，避免手机上横向滚动 */
+        border-radius: 0;             /* 全出血：去掉圆角与左右边框 */
+        border-left: 0;
+        border-right: 0;
+        border-bottom: 0;
+        border-top: 1px solid var(--SmartThemeBorderColor, #444);
+        padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     }
 
     .cardlore_toolbar {
