@@ -400,23 +400,39 @@
 
 /* ================= 移动端适配（窄屏/触屏） ================= */
 @media (max-width: 768px) {
+    /* 移动端「单滚动容器」方案：弹窗本身滚动整块面板（头部吸顶），
+       不依赖面板/内容区嵌套滚动 —— 规避部分设备/WebView 嵌套滚动失效、
+       dvh 不支持导致面板超高裁切、body 全局 touch-action:none 干扰等问题，
+       保证底部功能（应用/导出等）始终可滚动到达。 */
     .cardlore_popup {
-        padding: 6px;
-        padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
-        align-items: flex-start;      /* 顶部对齐，避免键盘弹出挤压 */
-        overflow-y: auto;             /* 兜底：面板万一超出屏幕，遮罩层本身也可滚动 */
+        padding: 0;
+        align-items: flex-start;      /* 顶部对齐 */
+        touch-action: pan-y;          /* 明确允许纵向手势滚动 */
+        overscroll-behavior: contain;
     }
 
     .cardlore_panel {
         width: 100vw;
-        max-height: 96vh;
-        max-height: 96dvh;            /* 动态视口高度，适配移动端地址栏/键盘伸缩 */
-        border-radius: 10px;
+        max-height: none;             /* 面板自然高度，整块交给弹窗滚动 */
+        margin: 0;
+        border: 0;
+        border-radius: 0;
+        overflow: visible;            /* 使头部 sticky 相对弹窗滚动容器生效 */
+    }
+
+    .cardlore_header {
+        position: sticky;             /* 头部吸顶：关闭按钮始终可见 */
+        top: 0;
+        z-index: 10;
     }
 
     .cardlore_body {
-        flex: 1 1 auto;
+        flex: none;
         min-height: 0;
+        overflow: visible;            /* 内容不再内部滚动，随面板一起滚动 */
+        padding: 10px;
+        gap: 10px;
+        padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
     }
 
     .cardlore_header {
@@ -427,11 +443,6 @@
     .cardlore_close {
         padding: 8px 12px;            /* 更大的触控区 */
         font-size: 1.2em;
-    }
-
-    .cardlore_body {
-        padding: 10px;
-        gap: 10px;
     }
 
     .cardlore_input {
