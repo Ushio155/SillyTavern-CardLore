@@ -5,7 +5,7 @@
 ## 许可与开发声明
 
 - 本插件以 **MIT 许可证** 开源（见 `LICENSE`），可自由使用、修改与再分发（保留版权声明即可）。
-- 本插件由 **DeepSeek Harness**（AI 编程助手）辅助开发，详细声明见 [`AI-DISCLOSURE.md`](./AI-DISCLOSURE.md)。
+- 本插件功能需求设计由作者本人完成，借助 **DeepSeek Harness**（AI 编程助手）辅助完成代码实现、调试以及发布相关样板工作，详细声明见 [`AI-DISCLOSURE.md`](./AI-DISCLOSURE.md)。
 - 使用本插件请同时遵守 SillyTavern 自身的许可与使用条款。
 
 ## 安装
