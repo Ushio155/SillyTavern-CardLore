@@ -398,6 +398,176 @@
     font-weight: 600;
 }
 
+/* ================= 导入素材（.txt/.md/.docx 文本提取） ================= */
+
+/* 「导入素材」入口链接：与「载入示例」同行同形态，琥珀色 */
+.cardlore_hint_sep {
+    margin: 0 2px;
+    opacity: 0.6;
+}
+
+#cardlore_import_material {
+    color: #f2c94c;
+    white-space: nowrap;
+}
+
+#cardlore_import_material:hover {
+    color: #ffd76a;
+}
+
+/* 红底白字危险按钮（导入弹窗「清空素材」） */
+.cardlore_btn_danger {
+    background: #d94b4b !important;
+    background-color: #d94b4b !important;
+    color: #ffffff !important;
+    filter: grayscale(0);
+}
+
+.cardlore_btn_danger:hover {
+    background: #e05a5a !important;
+    background-color: #e05a5a !important;
+}
+
+/* 输入框下方「已添加素材」chips 行 */
+.cardlore_materials {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.cardlore_material_chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 3px 10px;
+    font-size: 0.82em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--SmartThemeBodyColor, #eee);
+    background: var(--SmartThemeQuoteColor, #2a2a2a);
+    border: 1px solid rgba(242, 201, 76, 0.35);
+    border-radius: 12px;
+}
+
+.cardlore_material_rm {
+    flex: none;
+    cursor: pointer;
+    font-weight: 700;
+    line-height: 1;
+    color: #ff8a8a;
+    padding: 0 1px;
+}
+
+.cardlore_material_rm:hover {
+    color: #ff5f5f;
+}
+
+/* 导入弹窗：盖在主弹窗之上 */
+.cardlore_import_popup {
+    z-index: 100000;
+}
+
+/* 拖放区：拖入或点击选文件（触屏兜底入口） */
+.cardlore_import_drop {
+    margin-top: 10px;
+    padding: 26px 12px;
+    text-align: center;
+    cursor: pointer;
+    color: var(--SmartThemeBodyColor, #eee);
+    border: 1px dashed var(--SmartThemeBorderColor, #666);
+    border-radius: 10px;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    user-select: none;
+}
+
+.cardlore_import_drop:hover,
+.cardlore_import_drop.cardlore_import_drop_over {
+    border-color: #f2c94c;
+    background: rgba(242, 201, 76, 0.08);
+}
+
+.cardlore_import_drop_icon {
+    font-size: 1.9em;
+    color: #f2c94c;
+    margin-bottom: 6px;
+}
+
+.cardlore_import_drop_text {
+    font-size: 0.9em;
+    opacity: 0.85;
+}
+
+/* 计数 + 待选列表 */
+.cardlore_import_count {
+    margin-top: 10px;
+    font-size: 0.8em;
+    opacity: 0.8;
+}
+
+.cardlore_import_file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    padding: 5px 10px;
+    font-size: 0.85em;
+    border: 1px solid var(--SmartThemeBorderColor, #444);
+    border-radius: 8px;
+    background: rgba(128, 128, 128, 0.08);
+}
+
+.cardlore_import_file_name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cardlore_import_file_size {
+    margin-left: auto;
+    flex: none;
+    font-size: 0.82em;
+    opacity: 0.6;
+}
+
+.cardlore_import_file .cardlore_material_rm {
+    flex: none;
+    font-size: 1.1em;
+    padding: 0 2px;
+}
+
+/* 弹窗内小状态 */
+.cardlore_import_status {
+    margin-top: 8px;
+    font-size: 0.85em;
+    word-break: break-word;
+}
+
+.cardlore_import_status_error {
+    color: #ff8a8a;
+}
+
+.cardlore_import_status_info {
+    color: #eec357;
+}
+
+/* 底部按钮行 */
+.cardlore_import_actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.cardlore_import_actions .menu_button {
+    flex: 0 0 auto;
+    width: auto;          /* 内容宽度，避免 ST .menu_button(min-content) 中文竖排成窄条 */
+    margin: 0;
+    white-space: nowrap;
+}
+
 /* ================= 移动端适配（窄屏/触屏） ================= */
 @media (max-width: 768px) {
     /* 移动端「单滚动容器」方案：弹窗本身滚动整块面板（头部吸顶），
@@ -562,6 +732,29 @@
     .cardlore_table th,
     .cardlore_table td {
         padding: 5px 6px;
+    }
+
+    /* 导入素材：触控友好、按钮等宽铺满 */
+    .cardlore_import_drop {
+        min-height: 120px;
+        padding: 30px 14px;
+    }
+
+    .cardlore_import_drop_icon {
+        font-size: 2.2em;
+    }
+
+    .cardlore_import_actions .menu_button {
+        flex: 1 1 auto;
+        justify-content: center;
+        text-align: center;
+        padding: 10px 8px;
+        min-height: 40px;
+    }
+
+    .cardlore_material_chip {
+        font-size: 0.86em;
+        padding: 4px 10px;
     }
 }
 

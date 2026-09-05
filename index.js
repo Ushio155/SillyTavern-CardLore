@@ -15,6 +15,7 @@ import { escapeHtml } from '../../../utils.js';
 import { parse } from './src/parser.js';
 import { buildCard, buildBook } from './src/builder.js';
 import { applyToST, downloadJson } from './src/writer.js';
+import { readSourceFile, isSupportedSourceFile, MAX_SOURCE_FILE_SIZE } from './src/filetext.js';
 
 const MODULE_NAME = 'CardLore';
 
@@ -128,6 +129,10 @@ const SAMPLE_TEXT = `【角色卡】
 let lastResult = null;
 /** 应用按钮防误触：arm 状态 */
 let applyArmed = false;
+/** 「导入素材」已添加的文件（含抽取文本，与输入框文本合并参与解析/AI 适配） */
+let materials = [];
+/** 素材数量上限 */
+const MAX_MATERIALS = 20;
 
 jQuery(async function () {
     const settings = (extension_settings[MODULE_NAME] = extension_settings[MODULE_NAME] || {});
@@ -268,11 +273,14 @@ function openPopup() {
                     <div class="cardlore_hint">
                         粘贴「特定格式」文本（【角色卡】/【世界书】/【角色书】区块 + 键: 值 + ### 条目：名称）。
                         <a id="cardlore_load_sample" href="javascript:void(0)">载入示例</a>
+                        <span class="cardlore_hint_sep">｜</span>
+                        <a id="cardlore_import_material" class="cardlore_import_link" href="javascript:void(0)" title="支持 .txt/.md/.docx，可多选；素材与输入框文本合并参与「解析预览」与「AI 适配」">导入素材</a>
                     </div>
                     <div class="cardlore_input_wrap">
                         <textarea id="cardlore_input" class="text_pole cardlore_input" placeholder="在此粘贴角色设定文本，或输入设定文本进行「AI适配」…"></textarea>
                         <div id="cardlore_expand" class="menu_button cardlore_expand" title="展开全屏编辑" data-i18n="[title]展开全屏编辑"><i class="fa-solid fa-expand"></i>&nbsp;展开</div>
                     </div>
+                    <div id="cardlore_materials" class="cardlore_materials" style="display:none;"></div>
                     <div class="cardlore_toolbar">
                         <div id="cardlore_ai" class="menu_button"><i class="fa-solid fa-robot"></i>&nbsp;AI 适配</div>
                         <div id="cardlore_parse" class="menu_button">解析预览</div>
@@ -332,6 +340,15 @@ function openPopup() {
         $('#cardlore_input').val(SAMPLE_TEXT);
         setStatus('已载入示例文本，点击「解析预览」。', 'info');
     });
+    $('#cardlore_import_material').on('click', openImportPopup);
+    // 已添加素材 chips：点 × 移除
+    $('#cardlore_materials').on('click', '.cardlore_material_rm', function () {
+        const i = Number($(this).attr('data-i'));
+        if (!Number.isInteger(i) || i < 0 || i >= materials.length) return;
+        materials.splice(i, 1);
+        reRenderMaterials();
+        setStatus(materials.length ? `已移除素材，剩余 ${materials.length} 个。` : '已移除素材。', 'info');
+    });
     $('#cardlore_ai').on('click', onAiConvert);
     $('#cardlore_parse').on('click', onParse);
     $('#cardlore_apply').on('click', onApply);
@@ -383,6 +400,223 @@ function openPopup() {
         $('#cardlore_ai_model').val(preset.models[0]);
         setStatus(`已填入「${preset.name}」：${preset.url}，模型 ${preset.models[0]}。填好 API Key 后点「保存设置」。`, 'info');
     });
+
+    reRenderMaterials();
+}
+
+/* ---------------- 导入素材 ---------------- */
+
+/** 待添加（弹窗内）的文件引用 */
+let importPending = [];
+
+/** 渲染输入框下方的「已添加素材」chips 行 */
+function reRenderMaterials() {
+    const $wrap = $('#cardlore_materials');
+    if (!$wrap.length) return;
+    if (!materials.length) {
+        $wrap.hide().empty();
+        return;
+    }
+    $wrap.empty();
+    materials.forEach((m, i) => {
+        const $chip = $(`<span class="cardlore_material_chip" title="已添加：${escapeHtml(m.name)}。点击 × 移除。"><i class="fa-solid fa-file-lines"></i>&nbsp;${escapeHtml(m.name)}<span class="cardlore_material_rm" data-i="${i}" title="移除该素材">×</span></span>`);
+        $wrap.append($chip);
+    });
+    $wrap.show();
+}
+
+/** 打开「导入素材」弹窗 */
+function openImportPopup() {
+    let $popup = $('#cardlore_import_popup');
+    if (!$popup.length) {
+        $popup = $(buildImportPopupHtml()).appendTo('body');
+        bindImportPopupEvents($popup);
+    }
+    importPending = [];
+    renderImportPending();
+    setImportPopupStatus('');
+    $popup.show();
+}
+
+function buildImportPopupHtml() {
+    return `
+        <div id="cardlore_import_popup" class="cardlore_popup cardlore_import_popup" style="display:none;">
+            <div class="cardlore_panel">
+                <div class="cardlore_header">
+                    <span><i class="fa-solid fa-file-import"></i>&nbsp;导入素材文件</span>
+                    <span id="cardlore_import_close" class="cardlore_close fa-solid fa-xmark" title="关闭"></span>
+                </div>
+                <div class="cardlore_body">
+                    <div class="cardlore_hint">
+                        暂仅支持 .txt、.docx、.md 格式的文件。可拖入或点击选择（可多选），
+                        点击【添加素材】后文件名将显示在输入框下方，并与输入框文本合并参与「解析预览」与「AI 适配」。
+                    </div>
+                    <div id="cardlore_import_drop" class="cardlore_import_drop" tabindex="0">
+                        <div class="cardlore_import_drop_icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+                        <div class="cardlore_import_drop_text">将文件拖到此处，或点击选择文件</div>
+                    </div>
+                    <input type="file" id="cardlore_import_file" accept=".txt,.md,.docx" multiple style="display:none;">
+                    <div id="cardlore_import_count" class="cardlore_import_count" style="display:none;"></div>
+                    <div id="cardlore_import_pending" class="cardlore_import_pending" style="display:none;"></div>
+                    <div id="cardlore_import_status" class="cardlore_import_status" style="display:none;"></div>
+                    <div class="cardlore_import_actions">
+                        <div id="cardlore_import_add" class="menu_button cardlore_import_add_btn"><i class="fa-solid fa-plus"></i>&nbsp;添加素材</div>
+                        <div id="cardlore_import_clear" class="menu_button cardlore_btn_danger"><i class="fa-solid fa-trash-can"></i>&nbsp;清空素材</div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+}
+
+function bindImportPopupEvents($popup) {
+    $('#cardlore_import_close', $popup).on('click', () => $popup.hide());
+    $popup.on('click', function (e) {
+        if (e.target === this) $popup.hide(); // 点击遮罩关闭（取消）
+    });
+    $(document).on('keydown.cardloreImport', (e) => {
+        const $p = $('#cardlore_import_popup');
+        if (e.key === 'Escape' && $p.is(':visible')) $p.hide();
+    });
+
+    const $drop = $('#cardlore_import_drop', $popup);
+    const $file = $('#cardlore_import_file', $popup);
+
+    // 点击选择（触屏设备无拖拽，此为唯一入口）
+    $drop.on('click', () => $file.trigger('click'));
+    $file.on('change', function () {
+        addFilesToPending([...this.files]);
+        this.value = '';
+    });
+
+    // 拖放（preventDefault/stopPropagation 避免触发 ST 全局拖放）
+    $drop.on('dragover dragenter', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        $drop.addClass('cardlore_import_drop_over');
+    });
+    $drop.on('dragleave dragend', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        $drop.removeClass('cardlore_import_drop_over');
+    });
+    $drop.on('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        $drop.removeClass('cardlore_import_drop_over');
+        addFilesToPending([...(e.originalEvent?.dataTransfer?.files || [])]);
+    });
+
+    // 待选列表内移除单项
+    $('#cardlore_import_pending', $popup).on('click', '.cardlore_import_rm', function () {
+        const i = Number($(this).attr('data-i'));
+        if (!Number.isInteger(i) || i < 0 || i >= importPending.length) return;
+        importPending.splice(i, 1);
+        renderImportPending();
+    });
+
+    // 清空待选（红底白字）
+    $('#cardlore_import_clear', $popup).on('click', () => {
+        importPending = [];
+        renderImportPending();
+        setImportPopupStatus('');
+    });
+
+    // 读取并添加素材
+    $('#cardlore_import_add', $popup).on('click', onImportAdd);
+}
+
+/** 把拖入/选中的文件加入待选列表（过滤扩展名、去重、数量上限） */
+function addFilesToPending(files) {
+    const unsupported = [];
+    let added = 0;
+    const quota = MAX_MATERIALS - materials.length - importPending.length;
+    for (const f of files) {
+        if (!f || typeof f.name !== 'string') continue;
+        if (!isSupportedSourceFile(f)) {
+            unsupported.push(f.name);
+            continue;
+        }
+        if (f.size > MAX_SOURCE_FILE_SIZE) {
+            unsupported.push(`${f.name}（过大）`);
+            continue;
+        }
+        if (importPending.some(p => p.name === f.name && p.size === f.size)) continue;
+        if (added >= quota) {
+            unsupported.push(`${f.name}（超出 ${MAX_MATERIALS} 个上限）`);
+            continue;
+        }
+        importPending.push(f);
+        added++;
+    }
+    setImportPopupStatus(unsupported.length ? `已忽略：${unsupported.join('、')}` : '', 'error');
+    if (added) renderImportPending();
+}
+
+/** 渲染待选文件列表 + 计数 */
+function renderImportPending() {
+    const $count = $('#cardlore_import_count');
+    const $list = $('#cardlore_import_pending');
+    if (!importPending.length) {
+        $list.hide().empty();
+        if (materials.length) {
+            $count.text(`已添加 ${materials.length} 个素材（显示在输入框下方，可点 × 移除）`).show();
+        } else {
+            $count.hide().text('');
+        }
+        return;
+    }
+    $list.empty();
+    importPending.forEach((f, i) => {
+        const sizeText = f.size > 1024 * 1024
+            ? `${(f.size / 1024 / 1024).toFixed(1)} MB`
+            : `${Math.max(1, Math.round(f.size / 1024))} KB`;
+        $(`<div class="cardlore_import_file"><i class="fa-solid fa-file-lines"></i>&nbsp;<span class="cardlore_import_file_name">${escapeHtml(f.name)}</span><span class="cardlore_import_file_size">${sizeText}</span><span class="cardlore_material_rm cardlore_import_rm" data-i="${i}" title="移除">×</span></div>`)
+            .appendTo($list);
+    });
+    $list.show();
+    $count.text(`待添加 ${importPending.length} 个 · 已添加 ${materials.length} 个（合计上限 ${MAX_MATERIALS}）`).show();
+}
+
+/** 弹窗内小状态（红=错误，琥珀=进行中/提示） */
+function setImportPopupStatus(text, type = 'error') {
+    const $s = $('#cardlore_import_status');
+    if (!text) {
+        $s.hide().attr('class', 'cardlore_import_status').text('');
+        return;
+    }
+    $s.attr('class', `cardlore_import_status cardlore_import_status_${type}`).text(text).show();
+}
+
+/** 【添加素材】：读取待选文件 → 加入 materials → 关闭弹窗并刷新 chips */
+async function onImportAdd() {
+    const $popup = $('#cardlore_import_popup');
+    if (!importPending.length) {
+        setImportPopupStatus('请先拖入或选择文件。', 'error');
+        return;
+    }
+    setImportPopupStatus('正在读取文件…', 'info');
+    const results = [];
+    const failed = [];
+    for (const f of importPending) {
+        try {
+            results.push(await readSourceFile(f));
+        } catch (err) {
+            failed.push(String(err?.message || err));
+        }
+    }
+    if (!results.length) {
+        setImportPopupStatus(failed.join('；') || '读取失败，请重试。', 'error');
+        return;
+    }
+    materials.push(...results);
+    importPending = [];
+    renderImportPending();
+    reRenderMaterials();
+    $popup.hide();
+    const names = results.map(r => r.name).join('、');
+    setStatus(failed.length
+        ? `已添加 ${results.length} 个素材（${names}）；${failed.length} 个失败：${failed.join('；')}。`
+        : `已添加 ${results.length} 个素材：${names}。`, 'info');
 }
 
 /** 渲染 AI 接口预设方案列表 */
@@ -410,10 +644,19 @@ function onClearPreview() {
 
 /* ---------------- AI 适配 ---------------- */
 
+/** 有效原始文本 = 输入框文本 + 已添加素材文本（素材按添加顺序，空行分隔，不加装饰分隔行） */
+function combinedInputText() {
+    const own = String($('#cardlore_input').val() || '');
+    const parts = [];
+    if (own.trim()) parts.push(own);
+    for (const m of materials) parts.push(m.text);
+    return parts.join('\n\n');
+}
+
 function onAiConvert() {
-    const text = $('#cardlore_input').val();
+    const text = combinedInputText();
     if (!text.trim()) {
-        setStatus('请先粘贴原始文本，再点「AI 适配」。', 'warn');
+        setStatus('请先粘贴原始文本或添加素材文件，再点「AI 适配」。', 'warn');
         return;
     }
     const ai = extension_settings[MODULE_NAME].ai;
@@ -429,9 +672,17 @@ function onAiConvert() {
     (async () => {
         try {
             setBusy(true, 'AI 正在整理文本…');
+            const mergedCount = materials.length;
             const formatted = await aiConvert(text, ai);
             $('#cardlore_input').val(formatted);
-            setStatus('AI 整理完成，已自动解析预览。', 'info');
+            // 素材内容已并入整理结果（写回输入框），清空素材列表防止再次合并造成重复
+            if (mergedCount) {
+                materials = [];
+                reRenderMaterials();
+            }
+            setStatus(mergedCount
+                ? `AI 整理完成（已并入 ${mergedCount} 个素材文件并清空素材列表），已自动解析预览。`
+                : 'AI 整理完成，已自动解析预览。', 'info');
             onParse();
         } catch (err) {
             console.error('[CardLore] AI convert failed', err);
@@ -512,16 +763,16 @@ function setStatus(text, type = 'info') {
 }
 
 function setBusy(busy, text) {
-    $('#cardlore_ai, #cardlore_parse, #cardlore_apply, #cardlore_export, #cardlore_clear, #cardlore_expand, #cardlore_expand_parse, #cardlore_expand_close').prop('disabled', busy).toggleClass('disabled', busy);
+    $('#cardlore_ai, #cardlore_parse, #cardlore_apply, #cardlore_export, #cardlore_clear, #cardlore_expand, #cardlore_expand_parse, #cardlore_expand_close, #cardlore_import_material, #cardlore_import_add, #cardlore_import_clear').prop('disabled', busy).toggleClass('disabled', busy);
     if (text) setStatus(text, 'info');
 }
 
 /* ---------------- 解析预览 ---------------- */
 
 function onParse() {
-    const text = $('#cardlore_input').val();
+    const text = combinedInputText();
     if (!text.trim()) {
-        setStatus('请先粘贴文本。', 'warn');
+        setStatus('请先粘贴文本或添加素材文件。', 'warn');
         return;
     }
 

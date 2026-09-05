@@ -32,7 +32,8 @@ https://github.com/Ushio155/SillyTavern-CardLore
 点击后打开生成器：
 
 1. 粘贴**任意原始文本**（无需关心插件格式）。输入框右上角「**展开**」可切换全屏编辑，方便查看和修改整段文本（编辑实时同步，`Esc` 或「完成」收起；全屏内也可直接「解析预览」）。
-2. 点「**AI 适配**」（🤖，解析预览左侧）——通过 **OpenAI 兼容接口**自动整理成插件格式并立即预览。
+   - 也可以用本地文件作为素材：提示行「载入示例」右侧的琥珀色「**导入素材**」支持拖入或点击选择 **.txt / .md / .docx**（可多选、可重复添加），添加后文件名以标签显示在输入框下方（点 × 移除）。适合导入 Word/纯文本里的设定稿、小说、大纲等长文，再交给「AI 适配」整理。
+2. 点「**AI 适配**」（🤖，解析预览左侧）——通过 **OpenAI 兼容接口**自动整理成插件格式并立即预览。已添加的素材文件会与输入框文本**一并合并**送入；整理完成回填后素材列表自动清空，避免重复合并。
    - 首次使用：展开「AI 接口设置」→ 展开「**预设方案**」选择一家（DeepSeek / OpenAI / Kimi / 通义 / GLM / 硅基流动 / Groq / OpenRouter / 本地 Ollama），点「填入」自动填好地址与模型；填 API Key 后点「保存设置」。
    - 或保留「自定义 OpenAI 兼容」选项，手动填接口地址 / API Key / 模型。
    - 接口地址留空会自动预填 ST「自定义 OpenAI」或 DeepSeek 源配置。
@@ -79,6 +80,7 @@ cardlore.css      # 弹窗样式（含按钮配色、移动端适配）
 src/parser.js     # 文本 → AST（行级状态机，纯函数）
 src/builder.js    # AST → 卡 V2 data + 世界书 entries（默认值对齐 1.18.0）
 src/writer.js     # 写回 ST：saveWorldInfo + /api/characters/import
+src/filetext.js   # 素材文件提取：.txt/.md 编码识别(UTF-8→GB18030) + .docx 解压取文
 AI-DISCLOSURE.md  # AI 开发声明（DeepSeek Harness）
 ```
 
@@ -91,6 +93,7 @@ AI-DISCLOSURE.md  # AI 开发声明（DeepSeek Harness）
 | `extension_settings` / `oai_settings` | `public/scripts/extensions.js` / `public/scripts/openai.js` |
 | 「扩展程序」菜单 `#extensionsMenu`（`extensionsMenuExtensionButton`）、设置容器 `#extensions_settings` | `public/scripts/templates/wandMenu.html` / `public/index.html` |
 | 角色导入 `POST /api/characters/import`（json） | `src/endpoints/characters.js`（readFromV2 保留 extensions.*） |
+| JSZip（.docx 解压，运行时动态加载） | ST 自带静态资源 `public/lib/jszip.min.js` |
 
 ## 验证清单（浏览器 / 移动端）
 
@@ -102,4 +105,5 @@ AI-DISCLOSURE.md  # AI 开发声明（DeepSeek Harness）
 - [ ] 「应用」→ 角色库出现新角色，且「世界书」下拉里出现 `林晚的世界书`
 - [ ] 该角色卡「深度提示」字段含角色备注内容；「替代开场白」含其余开场节点
 - [ ] 导出的 `.card.json` 可被 ST 原生「导入角色」读回
+- [ ] 「导入素材」：拖入/选择 .txt 与 .docx 各一 → 文件名标签出现在输入框下方；素材含「特定格式」内容时点「解析预览」可合并解析；「清空素材」红底白字可清待选
 - [ ] 手机浏览器：弹窗全屏可用、按钮触控区够大、输入框聚焦不自动缩放
