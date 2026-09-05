@@ -530,3 +530,47 @@
         padding: 5px 6px;
     }
 }
+
+/* ================= 底部工具栏：手机窄屏两行布局 =================
+   PC/宽屏（> 640px）：保持原有单行 5 按钮（DOM 顺序：AI适配/解析预览/应用/导出JSON/清空预览）。
+   手机窄屏：仅用 CSS order 重排视觉顺序 + flex-wrap 自动换行为两行，
+   不改动按钮功能、图标、文字、点击逻辑。
+   第一行：AI 适配 / 解析预览 / 清空预览（三等宽铺满整行）
+   第二行：导出 JSON / 应用：创建角色+世界书（保持原文字宽度，整组居中对齐）
+   两行均强制按钮文字单行显示（white-space: nowrap），不缩写不删减原文。 */
+@media (max-width: 640px) {
+    .cardlore_toolbar {
+        justify-content: center;
+    }
+
+    /* 复位 ≤768 段的 flex 拉伸，保证第一行恰好放 3 个、第二行自然宽度 */
+    .cardlore_toolbar .menu_button {
+        flex: 0 0 auto;
+        white-space: nowrap;         /* 按钮文字强制单行，禁止自动换行 */
+        overflow: visible;
+    }
+
+    /* 视觉顺序（order）：AI适配(1) 解析预览(2) 清空预览(3) / 导出JSON(4) 应用(5) */
+    #cardlore_ai {
+        order: 1;
+        flex: 1 1 calc((100% - 12px) / 3);   /* 12px = 行内两个 6px 间距 */
+    }
+
+    #cardlore_parse {
+        order: 2;
+        flex: 1 1 calc((100% - 12px) / 3);
+    }
+
+    #cardlore_clear {
+        order: 3;
+        flex: 1 1 calc((100% - 12px) / 3);
+    }
+
+    #cardlore_export {
+        order: 4;
+    }
+
+    #cardlore_apply {
+        order: 5;
+    }
+}

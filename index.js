@@ -206,20 +206,37 @@ function addSettingsBlock() {
     const settings = extension_settings[MODULE_NAME];
     const html = `
         <div id="cardlore_container" class="extension_container">
-            <div class="settings_block">
-                <h3 data-i18n="CardLore：角色卡·世界书生成器">CardLore：角色卡·世界书生成器</h3>
-                <small data-i18n="粘贴「特定格式」文本，自动识别区块生成角色卡与世界书。">粘贴「特定格式」文本，自动识别区块生成角色卡与世界书。</small>
-                <label class="checkbox_label flex-container" for="cardlore_confirm_create">
-                    <input id="cardlore_confirm_create" type="checkbox">
-                    <span data-i18n="应用前二次确认">应用前二次确认</span>
-                </label>
-                <div class="flex-container flexGap5 alignItemsCenter">
-                    <label for="cardlore_book_suffix" data-i18n="世界书命名后缀">世界书命名后缀</label>
-                    <input id="cardlore_book_suffix" type="text" class="text_pole widthNatural" value="${escapeHtml(settings.bookNameSuffix)}">
+            <div class="inline-drawer" id="cardlore_settings_drawer">
+                <div class="inline-drawer-toggle inline-drawer-header" id="cardlore_settings_toggle">
+                    <span class="flex-container alignItemsCenter flexGap5 flexGrow">
+                        <b data-i18n="CardLore：角色卡·世界书生成器">CardLore：角色卡·世界书生成器</b>
+                        <button id="cardlore_quick_create" type="button" class="menu_button menu_button_icon" title="一键生成角色卡与世界书">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                            <span data-i18n="一键生成">一键生成</span>
+                        </button>
+                    </span>
+                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                </div>
+                <div class="inline-drawer-content">
+                    <small data-i18n="粘贴「特定格式」文本，自动识别区块生成角色卡与世界书。">粘贴「特定格式」文本，自动识别区块生成角色卡与世界书。</small>
+                    <label class="checkbox_label flex-container" for="cardlore_confirm_create">
+                        <input id="cardlore_confirm_create" type="checkbox">
+                        <span data-i18n="应用前二次确认">应用前二次确认</span>
+                    </label>
+                    <div class="flex-container flexGap5 alignItemsCenter">
+                        <label for="cardlore_book_suffix" data-i18n="世界书命名后缀">世界书命名后缀</label>
+                        <input id="cardlore_book_suffix" type="text" class="text_pole widthNatural" value="${escapeHtml(settings.bookNameSuffix)}">
+                    </div>
                 </div>
             </div>
         </div>`;
     $('#extensions_settings').append(html);
+
+    // 「一键生成」：标题栏内始终可见，点击直接打开生成器，且不触发展开/收起
+    $('#cardlore_quick_create').on('click', function (e) {
+        e.stopPropagation();
+        openPopup();
+    });
 
     $('#cardlore_confirm_create').prop('checked', settings.confirmBeforeCreate).on('change', function () {
         settings.confirmBeforeCreate = $(this).prop('checked');
@@ -253,7 +270,7 @@ function openPopup() {
                         <a id="cardlore_load_sample" href="javascript:void(0)">载入示例</a>
                     </div>
                     <div class="cardlore_input_wrap">
-                        <textarea id="cardlore_input" class="text_pole cardlore_input" placeholder="在此粘贴角色设定文本…"></textarea>
+                        <textarea id="cardlore_input" class="text_pole cardlore_input" placeholder="在此粘贴角色设定文本，或输入设定文本进行「AI适配」…"></textarea>
                         <div id="cardlore_expand" class="menu_button cardlore_expand" title="展开全屏编辑" data-i18n="[title]展开全屏编辑"><i class="fa-solid fa-expand"></i>&nbsp;展开</div>
                     </div>
                     <div class="cardlore_toolbar">
@@ -590,7 +607,9 @@ function renderPreview() {
         ${errorsHtml}
         ${warningsHtml}
     `);
-    setStatus(`解析完成：${errors.length ? `发现 ${errors.length} 个错误` : '无错误'}，${warnings.length} 条警告。`, errors.length ? 'warn' : 'info');
+    const summary = `解析完成：${errors.length ? `发现 ${errors.length} 个错误` : '无错误'}，${warnings.length} 条警告。`;
+    const hint = errors.length ? ' 可使用「AI适配」进行一键适配「特定格式」。' : '';
+    setStatus(summary + hint, errors.length ? 'warn' : 'info');
 }
 
 /* ---------------- 应用 / 导出 ---------------- */
