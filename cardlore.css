@@ -449,9 +449,22 @@
         min-height: 160px;
         font-size: 16px;              /* 防 iOS 聚焦自动放大 */
         white-space: pre-wrap;        /* 长行自动换行，避免手机上横向滚动 */
+        padding-right: 72px;          /* 右下角「展开」按钮：右侧留空，防文字紧贴/被盖 */
+        padding-bottom: 50px;         /* 底部留空，防文字与按钮重叠 */
+    }
+
+    /* 缩小输入框占位提示文字字号（占位符单独设置，不影响已输入的正文 16px） */
+    #cardlore_input::placeholder {
+        font-size: 13px;
+        opacity: 0.85;
     }
 
     .cardlore_expand {
+        top: auto;                    /* 从右上角移到右下角 */
+        bottom: 6px;
+        right: 6px;
+        white-space: nowrap;          /* 图标+文字水平排布，避免中文竖排 */
+        width: auto;                  /* 改为内容宽度，不因 min-content 收窄 */
         padding: 8px 12px;            /* 更大的触控区 */
         font-size: 0.92em;
     }
@@ -463,14 +476,34 @@
     }
 
     .cardlore_expand_header {
+        flex-wrap: nowrap;            /* 标题 + 右侧按钮同一行，不换行 */
+        align-items: center;
         padding: calc(10px + env(safe-area-inset-top, 0px)) 10px 8px;
     }
 
+    .cardlore_expand_title {
+        flex: 1 1 auto;               /* 占满剩余空间，把按钮顶到最右 */
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 0.92em;
+    }
+
+    .cardlore_expand_actions {
+        flex: none;                   /* 不拉伸，紧凑排布 */
+        flex-direction: row;          /* 两按钮横排（并置于标题栏右侧） */
+        gap: 8px;
+    }
+
     .cardlore_expand_actions .menu_button {
-        flex: 1 1 auto;
-        min-height: 42px;
-        padding: 8px 14px;
-        font-size: 0.95em;
+        flex: 0 0 auto;               /* 紧凑，不拉伸 */
+        width: auto;                  /* 内容宽度，避免中文竖排成窄长条 */
+        margin: 0;
+        min-height: 0;
+        white-space: nowrap;          /* 文字水平单行、正常阅读 */
+        padding: 4px 12px;            /* 高度与标题栏对齐，不超出标题 */
+        font-size: 0.9em;
         text-align: center;
     }
 
@@ -536,16 +569,17 @@
    手机窄屏：仅用 CSS order 重排视觉顺序 + flex-wrap 自动换行为两行，
    不改动按钮功能、图标、文字、点击逻辑。
    第一行：AI 适配 / 解析预览 / 清空预览（三等宽铺满整行）
-   第二行：导出 JSON / 应用：创建角色+世界书（保持原文字宽度，整组居中对齐）
-   两行均强制按钮文字单行显示（white-space: nowrap），不缩写不删减原文。 */
+   第二行：导出 JSON / 应用：创建角色+世界书（两等宽铺满整行，消除左右空档）
+   两行按钮去掉自带垂直 margin，行间只保留 gap，视觉更紧凑；文字强制单行不缩写。 */
 @media (max-width: 640px) {
     .cardlore_toolbar {
         justify-content: center;
     }
 
-    /* 复位 ≤768 段的 flex 拉伸，保证第一行恰好放 3 个、第二行自然宽度 */
+    /* 复位 ≤768 段的 flex 拉伸，并去掉 ST 基础 margin（按钮自带上下 5px 会把两行撑得很开） */
     .cardlore_toolbar .menu_button {
         flex: 0 0 auto;
+        margin: 0;                   /* 消除行间多余垂直间距 */
         white-space: nowrap;         /* 按钮文字强制单行，禁止自动换行 */
         overflow: visible;
     }
@@ -566,11 +600,14 @@
         flex: 1 1 calc((100% - 12px) / 3);
     }
 
+    /* 第二行：两等宽铺满（6px = 行内一个 6px 间距），避免左右空档过大 */
     #cardlore_export {
         order: 4;
+        flex: 1 1 calc((100% - 6px) / 2);
     }
 
     #cardlore_apply {
         order: 5;
+        flex: 1 1 calc((100% - 6px) / 2);
     }
 }
