@@ -131,7 +131,7 @@ const ST_SOURCES = {
  */
 const AI_PRESETS = [
     { name: ST_PRESET_NAME, st: true, url: '', models: [], note: '借用 ST「API 连接」的模型与额度，免填地址和 Key（推荐）' },
-    { name: 'DeepSeek', url: 'https://api.deepseek.com', models: ['deepseek-v4-flash', 'deepseek-v4-pro'], note: '官方直连，flash 最便宜' },
+    { name: 'DeepSeek', url: 'https://api.deepseek.com', models: ['deepseek-flash', 'deepseek-v4-flash'], note: '官方直连，flash 最便宜' },
     { name: 'OpenAI', url: 'https://api.openai.com/v1', models: ['gpt-5.4-nano', 'gpt-5.4-mini', 'gpt-5.4'], note: '官方接口，nano 最便宜' },
     { name: 'Moonshot（Kimi）', url: 'https://api.moonshot.cn/v1', models: ['kimi-k2-turbo-preview', 'kimi-k2-0905-preview', 'kimi-latest'], note: '国内直连，turbo 性价比高' },
     { name: '阿里云百炼（通义千问）', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', models: ['qwen-flash', 'qwen3.5-flash', 'qwen-plus'], note: '阿里云兼容端点，flash 有免费额度' },

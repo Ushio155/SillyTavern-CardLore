@@ -238,6 +238,9 @@
     border: 1px solid rgba(128, 128, 128, 0.2);
     border-radius: 8px;
     overflow: hidden;
+    /* 关键：不许被父级 flex 压缩 —— 否则配合 overflow:hidden 会把整块内容裁成一条线（按钮彻底点不到） */
+    flex: 0 0 auto;
+    min-height: 0;
 }
 
 .cardlore_ai_toggle {
@@ -258,6 +261,23 @@
     gap: 6px;
     padding: 8px 10px;
     font-size: 0.85em;
+    /* 折叠区自成滚动容器：内容再长也能滑到底，避免底部「保存设置」被挤出可视区 */
+    max-height: min(58vh, 460px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* 底部操作条常驻在折叠区可视底部，不滚动也能点到 */
+.cardlore_ai_settings_body > .cardlore_toolbar {
+    position: sticky;
+    bottom: -8px;
+    z-index: 2;
+    margin: 0 -10px -8px;
+    padding: 8px 10px;
+    background: var(--SmartThemeBlurTintColor, #1e1e1e);
+    border-top: 1px solid rgba(128, 128, 128, 0.25);
 }
 
 .cardlore_ai_settings_body .flex-container {
@@ -299,8 +319,7 @@
     flex-direction: column;
     gap: 4px;
     padding: 6px 8px;
-    max-height: 220px;
-    overflow-y: auto;
+    /* 不单独做滚动区：统一交给「AI 接口设置」折叠区滚动，避免嵌套滚动 */
 }
 
 .cardlore_ai_preset {
@@ -663,7 +682,7 @@
     }
 
     .cardlore_panel {
-        width: 100vw;
+        width: 100%;                  /* 用容器宽度而非 100vw：避免弹窗竖向滚动条宽度被重复计算，产生横向溢出 */
         max-height: none;             /* 面板自然高度，整块交给弹窗滚动 */
         margin: 0;
         border: 0;
@@ -807,6 +826,21 @@
 
     .cardlore_ai_settings_body label {
         white-space: normal;          /* 标签允许换行 */
+    }
+
+    /* 移动端弹窗本身就是单一滚动容器：折叠区不再内部滚动（避免嵌套滚动在真机失效） */
+    .cardlore_ai_settings_body {
+        max-height: none;
+        overflow: visible;
+        padding-bottom: 4px;
+    }
+
+    .cardlore_ai_settings_body > .cardlore_toolbar {
+        position: static;
+        margin: 0;
+        padding: 0;
+        background: none;
+        border-top: 0;
     }
 
     .cardlore_ai_prompt {
