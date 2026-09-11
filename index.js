@@ -16,6 +16,20 @@ import { parse } from './src/parser.js';
 import { buildCard, buildBook } from './src/builder.js';
 import { applyToST, downloadJson } from './src/writer.js';
 import { readSourceFile, isSupportedSourceFile, MAX_SOURCE_FILE_SIZE } from './src/filetext.js';
+import {
+    DEFAULT_AI_PROMPT,
+    DEFAULT_AI_PROMPT_VERSION,
+    buildAiMessages,
+    isConversionOutput,
+    pickBetterOutput,
+    looksTruncated,
+    mergeContinuation,
+    isFaithfulConversion,
+    retentionRatio,
+    MIN_RETENTION,
+    REPAIR_SYSTEM_SUFFIX,
+    CONTINUE_INSTRUCTION,
+} from './src/aiprompt.js';
 
 const MODULE_NAME = 'CardLore';
 
@@ -24,59 +38,10 @@ const DEFAULT_SETTINGS = {
     confirmBeforeCreate: true,
 };
 
-/** AI 适配默认提示词 v6：完整性优先、禁止缩略；开场节点拆分为可选开局、角色备注→深度提示、核心规则仅入系统提示 */
-const DEFAULT_AI_PROMPT = `你是专业 SillyTavern 角色卡格式转换助手（风格参照角色卡设计师"卡缔"）。你的唯一任务：把用户提供的原始设定文本（任意格式：完整角色卡、设定文档、小说片段、对话剧本等），完整转换为下面这种固定格式。输出严格遵循模板，信息量 100% 保留，禁止任何缩略。
-
-【角色卡】
-名称: 角色名
-标签: 类型1、类型2
-描述: 角色背景与外貌性格概述（含高频行为）
-人格: 性格特质
-开场白: 角色初见用户时的开场场景（第一个开场节点）
-替代开场白: 其余开场节点（每行一条，用"- "前缀）
-示例对话: <START>
-  角色名: 台词
-  用户: 台词
-场景: 故事发生的时间地点
-系统提示: 扮演该角色的系统提示（含核心规则、特别指令，逐字保留）
-深度提示: 角色备注（高级定义内容）
-作者注: 备注
-
-【世界书】
-### 条目：设定名
-关键词: 关键词1; 关键词2
-位置: before_char
-顺序: 100
-内容: 该条设定的详细说明
-
-【区块映射规则】（必须严格执行，禁止输出【角色书】区块）
-1. 原文的【开场节点】/开场场景内容 → 第一个节点**逐字**填入「开场白」字段；其余节点（节点二、节点三……）逐条**逐字**填入「替代开场白」（每条一行，以"- "开头）。所有节点（含节点标题、场景背景简述、玩家处境）必须全部保留，禁止省略、禁止截断、禁止合并；输出后自检节点数量，若少于原文即为失败，必须补全。
-2. 原文的角色描述 + 【高频行为】→ 合并写入「描述」字段；高频行为逐条用"· "**逐字**列出完整保留，禁止删减、禁止概括。
-3. 原文的扮演规则/【核心规则】（如"从现在起，你是……只扮演……"及所有编号规则）→ **只**写入「系统提示」字段，逐字保留，禁止概括、禁止只保留要点；**不得写入「描述」**。
-4. 原文的【角色备注】/【系统数值备注】等高级定义内容 → **逐字**写入「深度提示」（Character's Note，位于情景下方的深度/角色区）字段，完整保留；**禁止写入「描述」或「作者注」**。
-5. 原文的【特别指令】（OOC、重置剧情等）→ **逐字**填入「系统提示」末尾，禁止改写、禁止省略。
-6. 原文的【对话示例】→ 填入「示例对话」字段，<START> 分隔，逐字完整保留。
-7. 名词性设定（组织、地点、物品、人物、事件、能力、系统规则等）→ 【世界书】条目，条目必须带标题「### 条目：名称」；数值系统设专条并标注「常量: 是」。
-8. 转换结果中禁止出现【角色书】区块；所有内容只允许落入【角色卡】字段或【世界书】条目。
-
-【绝对输出规则】（严格遵守，全部必须满足）
-1. 只输出转换结果本身，禁止"好的""明白了""以下是转换结果"等任何开场白、结束语、分析过程或额外解释。
-2. 输出长度不受限制：禁止为了控制 Token 而压缩、概括、合并或删减内容（转换任务与"生成新卡"不同，长度不限，完整性第一）。
-3. 原文全部信息逐条完整保留：所有规则、数值、系统、特别指令、开场节点、对话示例、条目内容一行都不能少，不得用"等""……"省略；【核心规则】【特别指令】【高频行为】【角色备注】【开场节点】等板块必须**逐字**保留原文表述，禁止概括为要点式短句。
-4. 玩家与目标角色指代原样保留（如 {{user}}、你、原文人名），不得改名、不得用泛指替代。
-5. 世界书条目要丰富：每个条目「内容」用"· "子要点展开，至少包含 2-3 种场景展开或条件分支（如：若对方配合/若对方搭话/若对方主动接触），原文已有的分支细节全部保留；可补充分支但不得偏离原设定。
-6. 对话示例用 <START> 分隔，原文的对话、动作、心声【】、数值展示完整保留，不截断。
-7. 忠实转换，禁止编造与遗漏：原文没有的字段省略该行；原文已有的信息不得遗漏、不得改写核心设定（人名、数值、关系、情节节点、规则条件一律原样）。
-8. 关键词用中文分号分隔，简明且覆盖常见叫法；「顺序」数值原样保留（默认100，权重更高则更大）。
-9. 长内容用两个空格缩进续行完整写下，段落与"· "子要点全部保留，不总结、不缩写。
-10. 保持原文风格与尺度，包括成人向、直白、露骨表述——不要因为内容尺度而委婉化、删减或净化。
-11. 始终使用中文输出，不要输出代码块围栏。
-
-参照样例（信息密度标准）：以《白衣天使的隐秘炽热》这类完整角色卡为参照——角色设定、核心规则、高频行为、特别指令、开场节点、高级定义、系统数值备注、对话示例、世界书条目等所有板块的内容 100% 保留，原文每一行设定都必须有对应落点。`;
-
-/** 提示词版本号：升级默认提示词后 +1，已保存旧提示词的用户会自动迁移到新版 */
-const DEFAULT_AI_PROMPT_VERSION = 6;
-
+/**
+ * AI 适配默认提示词 / 消息分层 / 输出守卫 → 见 src/aiprompt.js
+ * （v7 起提示词与守卫逻辑独立成模块：素材隔离规则 + 区块标记 + 尾部锚定 + 格式守卫 + 修复重试）
+ */
 const DEFAULT_AI_SETTINGS = {
     apiUrl: 'https://api.openai.com/v1',
     apiKey: '',
@@ -142,7 +107,10 @@ const AI_PRESETS = [
     { name: '本地 Ollama', url: 'http://localhost:11434/v1', models: ['qwen3:8b', 'llama3.1'], note: '本机免费，需先安装 Ollama' },
 ];
 
-/** 通过 ST 内置请求服务调用时，请求的最大输出 token 数（转换任务输出较长） */
+/** 一次「AI 适配」最多请求几次（守卫未通过时追加修正层重试） */
+const MAX_AI_ATTEMPTS = 3;
+
+/** ST 内置请求的单次输出上限（转换任务输出较长；推理模型的思维链也占这个额度） */
 const ST_MAX_OUTPUT_TOKENS = 8192;
 
 /**
@@ -850,8 +818,8 @@ function onAiConvert() {
                 ? `AI 正在整理文本（ST「API 连接」· ${st.model}）…`
                 : 'AI 正在整理文本…');
             const mergedCount = materials.length;
-            const formatted = await aiConvert(text, ai, useSt);
-            $('#cardlore_input').val(formatted);
+            const res = await aiConvert(text, ai, useSt);
+            $('#cardlore_input').val(res.text);
             // 素材内容已并入整理结果（写回输入框），清空素材列表防止再次合并造成重复
             if (mergedCount) {
                 materials = [];
@@ -859,9 +827,16 @@ function onAiConvert() {
             }
             const via = useSt ? `经由 ST「API 连接」· ${st.model}` : `自定义接口 · ${ai.model}`;
             const merge = mergedCount ? `；已并入 ${mergedCount} 个素材文件并清空素材列表` : '';
+            // 守卫提示：让用户知道这次结果是"自动修正/续写"过的，还是可能仍不合格
+            const notes = [];
+            if (res.repaired) notes.push('首次输出跑偏，已自动修正重试');
+            if (res.continued) notes.push('检测到截断，已自动续写');
+            if (!res.guardPassed) notes.push('输出结构可能仍不合格式，建议再点一次或换模型');
+            else if (res.lowRetention) notes.push(`输出与素材文字重合度偏低（${(res.retention * 100).toFixed(0)}%），可能改写过多，请核对`);
+            const noteText = notes.length ? `（${notes.join('；')}）` : '';
             // 解析状态会紧接着覆盖状态栏，这里把「AI 适配」来源交给 onParse 一并显示，避免信息一闪而过
-            lastAiNote = `AI 适配完成（${via}${merge}）。`;
-            setStatus(lastAiNote, 'info');
+            lastAiNote = `AI 适配完成（${via}${merge}）${noteText}。`;
+            setStatus(lastAiNote, res.guardPassed && !res.lowRetention ? 'info' : 'warn');
             onParse();
         } catch (err) {
             console.error('[CardLore] AI convert failed', err);
@@ -875,23 +850,90 @@ function onAiConvert() {
 }
 
 /**
- * 调用 AI 整理文本。
+ * 调用 AI 整理文本（分层消息 + 输出守卫）。
+ * 流程：① 分层消息请求（system=转换规则 / user=素材数据+尾部锚定）
+ *       ② 输出没落在固定字段结构内（把素材当指令执行、照素材模板作答、空输出）→ 追加修正层重试，最多 3 次
+ *       ③ 结构对但内容几乎全是新编的（忠实度低于 MIN_RETENTION）→ 同样重试
+ *       ④ 末尾像被 max_tokens 截断 → 追加一次续写
+ *       ⑤ 多次结果取「字段命中 → 素材保留率」更优的一份
  * @param {string} rawText 原始文本
  * @param {object} ai CardLore AI 设置
  * @param {boolean} useSt true = 通过 ST「API 连接」发送；false = 直连自定义 OpenAI 兼容接口
- * @returns {Promise<string>} 整理后的文本
+ * @returns {Promise<{text: string, guardPassed: boolean, lowRetention: boolean, retention: number, repaired: boolean, continued: boolean}>}
  */
 async function aiConvert(rawText, ai, useSt) {
-    return useSt
-        ? aiConvertViaSt(rawText, ai.prompt || DEFAULT_AI_PROMPT)
-        : aiConvertDirect(rawText, ai);
+    const promptText = ai.prompt || DEFAULT_AI_PROMPT;
+    const send = (msgs) => (useSt ? aiConvertViaSt(msgs) : aiConvertDirect(msgs, ai));
+
+    let text = '';
+    let truncatedSignal = false;
+    let repaired = false;
+    let continued = false;
+
+    // 守卫一/三：结构不对或忠实度太低就重试（空输出来自推理模型把 token 预算用在思考上，同样靠这层兜住）
+    for (let attempt = 1; attempt <= MAX_AI_ATTEMPTS; attempt++) {
+        const sys = attempt === 1 ? promptText : `${promptText}\n\n${REPAIR_SYSTEM_SUFFIX}`;
+        const res = await send(buildAiMessages(sys, rawText));
+        if (res.content.trim()) {
+            const before = text;
+            text = pickBetterOutput(text, res.content, rawText);
+            if (text !== before || !before.trim()) truncatedSignal = Boolean(res.truncated);
+        }
+        const ok = isConversionOutput(text) && isFaithfulConversion(rawText, text);
+        if (ok) {
+            repaired = attempt > 1;
+            break;
+        }
+        if (attempt < MAX_AI_ATTEMPTS) {
+            const why = !isConversionOutput(text)
+                ? `结构不合格式（${text.length} 字）`
+                : `与素材重合度过低（${(retentionRatio(rawText, text) * 100).toFixed(0)}% < ${MIN_RETENTION * 100}%）`;
+            console.warn(`[CardLore] 第 ${attempt} 次输出${why}，追加修正层重试`);
+        }
+    }
+
+    // 守卫二：末尾被截断 → 续写一次并拼接
+    if (text.trim() && (looksTruncated(text) || truncatedSignal)) {
+        console.warn('[CardLore] AI 输出疑似被截断，尝试续写');
+        try {
+            const msgs = [
+                ...buildAiMessages(promptText, rawText),
+                { role: 'assistant', content: text },
+                { role: 'user', content: CONTINUE_INSTRUCTION },
+            ];
+            const tailRes = await send(msgs);
+            const merged = mergeContinuation(text, tailRes.content);
+            if (merged !== text) {
+                text = merged;
+                continued = true;
+            }
+        } catch (err) {
+            console.warn('[CardLore] 续写失败，沿用已输出内容', err);
+        }
+    }
+
+    // 两次守卫都没救回来：空输出通常意味着推理把 max_tokens 预算吃完了
+    if (!text.trim()) {
+        throw new Error('AI 没有返回任何正文：请再点一次「AI 适配」（推理模型偶尔把输出预算全用在思考上），或确认自定义接口兼容 OpenAI chat/completions、换用非推理模型');
+    }
+
+    const retention = retentionRatio(rawText, text);
+    return {
+        text,
+        guardPassed: isConversionOutput(text),
+        retention,
+        lowRetention: retention < MIN_RETENTION,
+        repaired,
+        continued,
+    };
 }
 
 /**
  * 走 ST 内置请求服务（ChatCompletionService → /api/backends/chat-completions/generate），
  * 直接复用 ST「API 连接」的来源、模型、额度与已保存的 Key，用户无需在插件里再填任何凭据。
+ * @param {{role: string, content: string}[]} messages 分层消息
  */
-async function aiConvertViaSt(rawText, promptText) {
+async function aiConvertViaSt(messages) {
     const st = stConnectionInfo();
     if (!st.ok) throw new Error('ST「API 连接」里没有可用的模型，请先设置');
 
@@ -903,10 +945,7 @@ async function aiConvertViaSt(rawText, promptText) {
     const s = oai_settings || {};
     const payload = {
         stream: false,
-        messages: [
-            { role: 'system', content: promptText },
-            { role: 'user', content: rawText },
-        ],
+        messages,
         model: st.model,
         chat_completion_source: st.source,
         max_tokens: ST_MAX_OUTPUT_TOKENS,
@@ -931,14 +970,22 @@ async function aiConvertViaSt(rawText, promptText) {
 
     const result = await service.processRequest(payload, {}, true);
     const content = typeof result === 'string' ? result : result?.content;
+    // 空内容不再直接抛错：交给 aiConvert 的守卫触发一次修复重试（推理模型偶尔把预算全用在思维链上）
     if (typeof content !== 'string' || !content.trim()) {
-        throw new Error('ST「API 连接」没有返回可用内容，请确认该连接能正常聊天');
+        console.warn('[CardLore] ST「API 连接」返回空内容，交由守卫重试');
+        return { content: '', truncated: true };
     }
-    return stripCodeFence(content.trim());
+    // ST 的 extractData 只回传 content/reasoning，拿不到 finish_reason；
+    // 截断由 aiConvert 的 looksTruncated 守卫兜底。
+    return { content: stripCodeFence(content.trim()), truncated: false };
 }
 
-/** 直连用户填写的 OpenAI 兼容接口（chat/completions） */
-async function aiConvertDirect(rawText, ai) {
+/**
+ * 直连用户填写的 OpenAI 兼容接口（chat/completions）
+ * @param {{role: string, content: string}[]} messages 分层消息
+ * @param {object} ai CardLore AI 设置
+ */
+async function aiConvertDirect(messages, ai) {
     const url = normalizeChatUrl(ai.apiUrl);
     const headers = { 'Content-Type': 'application/json' };
     if (ai.apiKey) headers['Authorization'] = `Bearer ${ai.apiKey}`;
@@ -948,10 +995,7 @@ async function aiConvertDirect(rawText, ai) {
         headers,
         body: JSON.stringify({
             model: ai.model,
-            messages: [
-                { role: 'system', content: ai.prompt || DEFAULT_AI_PROMPT },
-                { role: 'user', content: rawText },
-            ],
+            messages,
             temperature: 0.3,
         }),
     });
@@ -963,10 +1007,13 @@ async function aiConvertDirect(rawText, ai) {
 
     const data = await response.json();
     let content = data?.choices?.[0]?.message?.content;
+    const truncated = data?.choices?.[0]?.finish_reason === 'length';
     if (typeof content !== 'string' || !content.trim()) {
-        throw new Error('响应中没有可用的 content（请确认接口兼容 OpenAI chat/completions 格式）');
+        // 空内容同样交给守卫重试，而不是直接失败
+        console.warn('[CardLore] 自定义接口返回空内容，交由守卫重试');
+        return { content: '', truncated: true };
     }
-    return stripCodeFence(content.trim());
+    return { content: stripCodeFence(content.trim()), truncated };
 }
 
 /** 去掉 AI 返回内容外层的 ``` 代码块围栏 */
