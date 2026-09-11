@@ -10,7 +10,7 @@
  */
 import { selectCharacterById, saveSettingsDebounced } from '../../../../script.js';
 import { oai_settings } from '../../../openai.js';
-import { extension_settings } from '../../../extensions.js';
+import { extension_settings, getContext } from '../../../extensions.js';
 import { escapeHtml } from '../../../utils.js';
 import { parse } from './src/parser.js';
 import { buildCard, buildBook } from './src/builder.js';
@@ -80,23 +80,90 @@ const DEFAULT_AI_PROMPT_VERSION = 6;
 const DEFAULT_AI_SETTINGS = {
     apiUrl: 'https://api.openai.com/v1',
     apiKey: '',
-    model: 'gpt-4o-mini',
+    model: 'gpt-5.4-nano',
     prompt: DEFAULT_AI_PROMPT,
     promptVersion: DEFAULT_AI_PROMPT_VERSION,
+    /** 调用方式：'st' = 直接使用 ST「API 连接」（免填 Key）；'custom' = 用下面填写的自定义接口 */
+    apiMode: '',
 };
 
-/** AI 接口预设方案（OpenAI 兼容），点击一键填入接口地址与模型；自定义选项始终保留 */
+/** 「默认方案」名称：直接使用 ST「API 连接」里的模型与额度 */
+const ST_PRESET_NAME = '默认方案';
+
+/**
+ * ST「API 连接」来源 → 展示名 / 模型字段名 / 默认接口地址。
+ * 字段名与 ST public/scripts/openai.js 的 getChatCompletionModel() 保持一致；
+ * 地址仅用于「自定义接口」模式的预填参考。
+ */
+const ST_SOURCES = {
+    openai: { label: 'OpenAI', field: 'openai_model', url: 'https://api.openai.com/v1' },
+    claude: { label: 'Claude', field: 'claude_model', url: 'https://api.anthropic.com' },
+    makersuite: { label: 'Google AI Studio', field: 'google_model', url: 'https://generativelanguage.googleapis.com' },
+    vertexai: { label: 'Vertex AI', field: 'vertexai_model', url: '' },
+    openrouter: { label: 'OpenRouter', field: 'openrouter_model', url: 'https://openrouter.ai/api/v1' },
+    ai21: { label: 'AI21', field: 'ai21_model', url: 'https://api.ai21.com/studio/v1' },
+    mistralai: { label: 'MistralAI', field: 'mistralai_model', url: 'https://api.mistral.ai/v1' },
+    custom: { label: '自定义（OpenAI 兼容）', field: 'custom_model', url: '' },
+    cohere: { label: 'Cohere', field: 'cohere_model', url: 'https://api.cohere.com/v1' },
+    perplexity: { label: 'Perplexity', field: 'perplexity_model', url: 'https://api.perplexity.ai' },
+    groq: { label: 'Groq', field: 'groq_model', url: 'https://api.groq.com/openai/v1' },
+    electronhub: { label: 'ElectronHub', field: 'electronhub_model', url: 'https://api.electronhub.ai/v1' },
+    chutes: { label: 'Chutes', field: 'chutes_model', url: 'https://llm.chutes.ai/v1' },
+    nanogpt: { label: 'NanoGPT', field: 'nanogpt_model', url: 'https://nano-gpt.com/api/v1' },
+    deepseek: { label: 'DeepSeek', field: 'deepseek_model', url: 'https://api.deepseek.com' },
+    aimlapi: { label: 'AIMLAPI', field: 'aimlapi_model', url: 'https://api.aimlapi.com/v1' },
+    xai: { label: 'xAI（Grok）', field: 'xai_model', url: 'https://api.x.ai/v1' },
+    pollinations: { label: 'Pollinations', field: 'pollinations_model', url: 'https://text.pollinations.ai/openai' },
+    moonshot: { label: 'Moonshot（Kimi）', field: 'moonshot_model', url: 'https://api.moonshot.cn/v1' },
+    fireworks: { label: 'Fireworks', field: 'fireworks_model', url: 'https://api.fireworks.ai/inference/v1' },
+    cometapi: { label: 'CometAPI', field: 'cometapi_model', url: 'https://api.cometapi.com/v1' },
+    azure_openai: { label: 'Azure OpenAI', field: 'azure_openai_model', url: '' },
+    zai: { label: '智谱 GLM', field: 'zai_model', url: 'https://open.bigmodel.cn/api/paas/v4' },
+    siliconflow: { label: '硅基流动 SiliconFlow', field: 'siliconflow_model', url: 'https://api.siliconflow.cn/v1' },
+    minimax: { label: 'MiniMax', field: 'minimax_model', url: 'https://api.minimax.io/v1' },
+    workers_ai: { label: 'Cloudflare Workers AI', field: 'workers_ai_model', url: '' },
+};
+
+/**
+ * AI 接口预设方案（OpenAI 兼容），点击一键填入接口地址与模型。
+ * 首项为「默认方案」：不填地址与 Key，直接借用 ST「API 连接」。
+ * 各家 models[0] = 默认填入的当前最具性价比模型（2026-06 整理）。
+ */
 const AI_PRESETS = [
-    { name: 'DeepSeek', url: 'https://api.deepseek.com', models: ['deepseek-chat', 'deepseek-reasoner'], note: '官方直连，便宜好用' },
-    { name: 'OpenAI', url: 'https://api.openai.com/v1', models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini'], note: '官方接口' },
-    { name: 'Moonshot（Kimi）', url: 'https://api.moonshot.cn/v1', models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'kimi-k2-0711-preview'], note: '国内直连，中文友好' },
-    { name: '阿里云百炼（通义千问）', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', models: ['qwen-plus', 'qwen-turbo', 'qwen-max'], note: '阿里云 OpenAI 兼容端点' },
-    { name: '智谱 GLM', url: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4-flash', 'glm-4-plus', 'glm-4.5'], note: '国内直连，glm-4-flash 免费' },
-    { name: '硅基流动 SiliconFlow', url: 'https://api.siliconflow.cn/v1', models: ['deepseek-ai/DeepSeek-V3', 'Qwen/Qwen2.5-72B-Instruct'], note: '聚合多家开源模型' },
-    { name: 'Groq', url: 'https://api.groq.com/openai/v1', models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'], note: '极速推理，有免费额度' },
-    { name: 'OpenRouter', url: 'https://openrouter.ai/api/v1', models: ['deepseek/deepseek-chat', 'openai/gpt-4o-mini'], note: '聚合平台，多模型切换' },
-    { name: '本地 Ollama', url: 'http://localhost:11434/v1', models: ['llama3.1', 'qwen2.5'], note: '本机免费，需先安装 Ollama' },
+    { name: ST_PRESET_NAME, st: true, url: '', models: [], note: '借用 ST「API 连接」的模型与额度，免填地址和 Key（推荐）' },
+    { name: 'DeepSeek', url: 'https://api.deepseek.com', models: ['deepseek-v4-flash', 'deepseek-v4-pro'], note: '官方直连，flash 最便宜' },
+    { name: 'OpenAI', url: 'https://api.openai.com/v1', models: ['gpt-5.4-nano', 'gpt-5.4-mini', 'gpt-5.4'], note: '官方接口，nano 最便宜' },
+    { name: 'Moonshot（Kimi）', url: 'https://api.moonshot.cn/v1', models: ['kimi-k2-turbo-preview', 'kimi-k2-0905-preview', 'kimi-latest'], note: '国内直连，turbo 性价比高' },
+    { name: '阿里云百炼（通义千问）', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', models: ['qwen-flash', 'qwen3.5-flash', 'qwen-plus'], note: '阿里云兼容端点，flash 有免费额度' },
+    { name: '智谱 GLM', url: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4.7-flash', 'glm-4.6', 'glm-4.5-air'], note: '国内直连，glm-4.7-flash 免费' },
+    { name: '硅基流动 SiliconFlow', url: 'https://api.siliconflow.cn/v1', models: ['deepseek-ai/DeepSeek-V4-Flash', 'deepseek-ai/DeepSeek-V3.2-Exp', 'Qwen/Qwen3-30B-A3B-Instruct-2507'], note: '聚合多家开源模型，部分免费' },
+    { name: 'Groq', url: 'https://api.groq.com/openai/v1', models: ['openai/gpt-oss-20b', 'llama-3.3-70b-versatile'], note: '极速推理，有免费额度' },
+    { name: 'OpenRouter', url: 'https://openrouter.ai/api/v1', models: ['deepseek/deepseek-v4-flash', 'deepseek/deepseek-v4-flash:free', 'openai/gpt-oss-20b'], note: '聚合平台，:free 后缀为免费版' },
+    { name: '本地 Ollama', url: 'http://localhost:11434/v1', models: ['qwen3:8b', 'llama3.1'], note: '本机免费，需先安装 Ollama' },
 ];
+
+/** 通过 ST 内置请求服务调用时，请求的最大输出 token 数（转换任务输出较长） */
+const ST_MAX_OUTPUT_TOKENS = 8192;
+
+/**
+ * 读取 ST「API 连接」当前使用的来源与模型。
+ * @returns {{source: string, label: string, model: string, url: string, ok: boolean}}
+ */
+function stConnectionInfo() {
+    const source = String(oai_settings?.chat_completion_source || '');
+    const meta = ST_SOURCES[source];
+    let model = meta ? String(oai_settings?.[meta.field] || '') : '';
+    // OpenRouter 选了「使用网站」时没有固定模型名
+    if (source === 'openrouter' && model === 'OR_Website') model = '';
+    const url = source === 'custom' ? String(oai_settings?.custom_url || '') : (meta?.url || '');
+    return {
+        source,
+        label: meta?.label || source || '未选择',
+        model,
+        url,
+        ok: Boolean(source && model),
+    };
+}
 
 const SAMPLE_TEXT = `【角色卡】
 名称: 林晚
@@ -133,6 +200,8 @@ let applyArmed = false;
 let materials = [];
 /** 素材数量上限 */
 const MAX_MATERIALS = 20;
+/** 一次性的「AI 适配完成」提示（由 onAiConvert 写入、onParse 显示后清除） */
+let lastAiNote = '';
 
 jQuery(async function () {
     const settings = (extension_settings[MODULE_NAME] = extension_settings[MODULE_NAME] || {});
@@ -143,17 +212,21 @@ jQuery(async function () {
         settings.ai.prompt = DEFAULT_AI_PROMPT;
         settings.ai.promptVersion = DEFAULT_AI_PROMPT_VERSION;
     }
-    // 预填接口地址与模型：优先取 ST「自定义 OpenAI」源，其次取 ST 的 DeepSeek 源，最后用默认值
-    const isDeepSeek = oai_settings?.chat_completion_source === 'deepseek';
+    // 预填「自定义接口」模式的地址与模型：取自 ST「API 连接」当前来源，最后兜底到默认值。
+    // 注意：这只是给「自定义接口」模式做参考预填，不影响「默认方案」（调用时实时读取 ST 设置）
+    const stConn = stConnectionInfo();
     if (!settings.ai.apiUrl) {
-        settings.ai.apiUrl = oai_settings?.custom_url
-            || (isDeepSeek ? 'https://api.deepseek.com' : '')
+        settings.ai.apiUrl = stConn.url
+            || String(oai_settings?.custom_url || '')
+            || String(oai_settings?.reverse_proxy || '')
             || DEFAULT_AI_SETTINGS.apiUrl;
     }
     if (!settings.ai.model) {
-        settings.ai.model = oai_settings?.custom_model
-            || (isDeepSeek ? oai_settings?.deepseek_model : '')
-            || DEFAULT_AI_SETTINGS.model;
+        settings.ai.model = stConn.model || DEFAULT_AI_SETTINGS.model;
+    }
+    // 调用方式：首次使用（还没保存过）时，只要 ST「API 连接」可用就用「默认方案」
+    if (settings.ai.apiMode !== 'st' && settings.ai.apiMode !== 'custom') {
+        settings.ai.apiMode = (stConn.ok && !settings.ai.apiKey) ? 'st' : 'custom';
     }
 
     addQuickCreateButton();
@@ -259,6 +332,9 @@ function openPopup() {
     const existing = $('#cardlore_popup');
     if (existing.length) {
         existing.show();
+        // 「默认方案」展示的是 ST「API 连接」实时状态，每次打开都刷新一遍
+        $('#cardlore_ai_presets_body').html(renderPresetsHtml());
+        applyAiMode(extension_settings[MODULE_NAME].ai.apiMode === 'custom' ? 'custom' : 'st', { save: false, announce: false });
         return;
     }
 
@@ -289,23 +365,31 @@ function openPopup() {
                         <div id="cardlore_clear" class="menu_button"><i class="fa-solid fa-eraser"></i>&nbsp;清空预览</div>
                     </div>
                     <div class="cardlore_ai_settings">
-                        <div id="cardlore_ai_toggle" class="cardlore_ai_toggle"><i class="fa-solid fa-gear"></i>&nbsp;AI 接口设置（可折叠）</div>
+                        <div id="cardlore_ai_toggle" class="cardlore_ai_toggle"><i class="fa-solid fa-gear"></i>&nbsp;AI 接口设置（可折叠）<span id="cardlore_ai_mode_badge" class="cardlore_ai_mode_badge"></span></div>
                         <div id="cardlore_ai_settings_body" class="cardlore_ai_settings_body" style="display: none;">
                             <div class="cardlore_ai_presets">
                                 <div id="cardlore_ai_presets_toggle" class="cardlore_ai_presets_toggle"><i class="fa-solid fa-list"></i>&nbsp;预设方案（点击展开，一键填入地址与模型）</div>
                                 <div id="cardlore_ai_presets_body" class="cardlore_ai_presets_body" style="display: none;"></div>
                             </div>
-                            <div class="flex-container flexGap5 alignItemsCenter">
+                            <div class="cardlore_ai_mode">
+                                <span class="cardlore_ai_mode_label">调用方式</span>
+                                <div class="cardlore_ai_mode_row">
+                                    <div id="cardlore_ai_mode_st" class="menu_button cardlore_ai_mode_btn" title="免填接口地址与 Key，直接使用 ST「API 连接」里的模型与额度">使用 ST 当前连接</div>
+                                    <div id="cardlore_ai_mode_custom" class="menu_button cardlore_ai_mode_btn" title="自己填写 OpenAI 兼容接口地址、Key 与模型">自定义接口</div>
+                                </div>
+                                <div id="cardlore_ai_st_hint" class="cardlore_ai_st_hint"></div>
+                            </div>
+                            <div class="cardlore_ai_custom_row flex-container flexGap5 alignItemsCenter">
                                 <label for="cardlore_ai_url">接口地址</label>
                                 <input id="cardlore_ai_url" type="text" class="text_pole flex1" placeholder="自定义 OpenAI 兼容地址（自动补 /chat/completions）">
                             </div>
-                            <div class="flex-container flexGap5 alignItemsCenter">
+                            <div class="cardlore_ai_custom_row flex-container flexGap5 alignItemsCenter">
                                 <label for="cardlore_ai_key">API Key</label>
                                 <input id="cardlore_ai_key" type="password" class="text_pole flex1" placeholder="sk-…（可留空）">
                             </div>
-                            <div class="flex-container flexGap5 alignItemsCenter">
+                            <div class="cardlore_ai_custom_row flex-container flexGap5 alignItemsCenter">
                                 <label for="cardlore_ai_model">模型</label>
-                                <input id="cardlore_ai_model" type="text" class="text_pole flex1" placeholder="gpt-4o-mini">
+                                <input id="cardlore_ai_model" type="text" class="text_pole flex1" placeholder="gpt-5.4-nano">
                             </div>
                             <label for="cardlore_ai_prompt">提示词（AI 适配格式用，可自行修改）</label>
                             <textarea id="cardlore_ai_prompt" class="text_pole cardlore_ai_prompt"></textarea>
@@ -389,16 +473,29 @@ function openPopup() {
     $('#cardlore_ai_save').on('click', saveAiSettings);
     $('#cardlore_ai_reset').on('click', resetAiPrompt);
 
-    // 预设方案：渲染 + 展开折叠 + 一键填入
+    // 预设方案 + 调用方式：渲染 + 展开折叠 + 一键填入
     $('#cardlore_ai_presets_body').html(renderPresetsHtml());
     $('#cardlore_ai_presets_toggle').on('click', () => $('#cardlore_ai_presets_body').slideToggle(200));
+    $('#cardlore_ai_mode_st').on('click', () => applyAiMode('st'));
+    $('#cardlore_ai_mode_custom').on('click', () => applyAiMode('custom'));
+    applyAiMode(ai.apiMode === 'custom' ? 'custom' : 'st', { save: false, announce: false });
     $('#cardlore_ai_presets_body').on('click', '.cardlore_ai_preset_use', function () {
         const presetName = $(this).closest('.cardlore_ai_preset').attr('data-preset');
         const preset = AI_PRESETS.find(p => p.name === presetName);
         if (!preset) return;
+        if (preset.st) {
+            applyAiMode('st', { announce: false });
+            const info = stConnectionInfo();
+            if (info.model) $('#cardlore_ai_model').val(info.model);
+            setStatus(info.ok
+                ? `「${ST_PRESET_NAME}」已启用：AI 适配将直接使用 ST「API 连接」的 ${info.label} · ${info.model}，接口地址与 Key 都不用填。`
+                : `「${ST_PRESET_NAME}」已启用，但没读到 ST「API 连接」的模型：请先在 ST 顶部「API 连接」里选好模型，或改用「自定义接口」。`, info.ok ? 'info' : 'warn');
+            return;
+        }
+        applyAiMode('custom', { announce: false });
         $('#cardlore_ai_url').val(preset.url);
         $('#cardlore_ai_model').val(preset.models[0]);
-        setStatus(`已填入「${preset.name}」：${preset.url}，模型 ${preset.models[0]}。填好 API Key 后点「保存设置」。`, 'info');
+        setStatus(`已切到「自定义接口」并填入「${preset.name}」：${preset.url}，模型 ${preset.models[0]}（当前最具性价比）。填好 API Key 后点「保存设置」。`, 'info');
     });
 
     reRenderMaterials();
@@ -619,9 +716,27 @@ async function onImportAdd() {
         : `已添加 ${results.length} 个素材：${names}。`, 'info');
 }
 
-/** 渲染 AI 接口预设方案列表 */
+/** 渲染 AI 接口预设方案列表（首项「默认方案」动态展示 ST「API 连接」当前状态） */
 function renderPresetsHtml() {
-    return AI_PRESETS.map(p => `
+    const st = stConnectionInfo();
+    return AI_PRESETS.map(p => {
+        if (p.st) {
+            const stInfo = st.ok
+                ? `来源：ST「API 连接」· ${escapeHtml(st.label)}`
+                : '来源：ST「API 连接」（未检测到模型，请先在 ST 里选好）';
+            const stModel = st.ok ? `模型：${escapeHtml(st.model)}` : '模型：—';
+            return `
+        <div class="cardlore_ai_preset cardlore_ai_preset_st" data-preset="${escapeHtml(p.name)}">
+            <div class="cardlore_ai_preset_info">
+                <b>${escapeHtml(p.name)}</b><span class="cardlore_ai_preset_badge">推荐</span>
+                <span class="cardlore_ai_preset_url">${stInfo}</span>
+                <span class="cardlore_ai_preset_models">${stModel}</span>
+                <span class="cardlore_ai_preset_note">${escapeHtml(p.note)}</span>
+            </div>
+            <div class="cardlore_ai_preset_use menu_button">启用</div>
+        </div>`;
+        }
+        return `
         <div class="cardlore_ai_preset" data-preset="${escapeHtml(p.name)}">
             <div class="cardlore_ai_preset_info">
                 <b>${escapeHtml(p.name)}</b>
@@ -630,7 +745,57 @@ function renderPresetsHtml() {
                 <span class="cardlore_ai_preset_note">${escapeHtml(p.note)}</span>
             </div>
             <div class="cardlore_ai_preset_use menu_button">填入</div>
-        </div>`).join('');
+        </div>`;
+    }).join('');
+}
+
+/**
+ * 切换调用方式（'st' = 用 ST 当前连接；'custom' = 用自定义接口）并同步界面。
+ * @param {'st'|'custom'} mode
+ * @param {{save?: boolean, announce?: boolean}} [opts]
+ */
+function applyAiMode(mode, { save = true, announce = true } = {}) {
+    const ai = extension_settings[MODULE_NAME].ai;
+    ai.apiMode = mode === 'custom' ? 'custom' : 'st';
+    const isSt = ai.apiMode === 'st';
+    $('#cardlore_ai_mode_st').toggleClass('cardlore_ai_mode_active', isSt);
+    $('#cardlore_ai_mode_custom').toggleClass('cardlore_ai_mode_active', !isSt);
+    // ST 模式下地址/Key/模型不参与请求，置灰并禁用避免误解
+    $('#cardlore_ai_url, #cardlore_ai_key, #cardlore_ai_model').prop('disabled', isSt);
+    $('.cardlore_ai_custom_row').toggleClass('cardlore_ai_custom_off', isSt);
+    $('#cardlore_ai_presets_body .cardlore_ai_preset').each(function () {
+        const name = $(this).attr('data-preset');
+        const preset = AI_PRESETS.find(p => p.name === name);
+        $(this).toggleClass('cardlore_ai_preset_active', Boolean(preset?.st) === isSt);
+    });
+    renderStHint();
+    if (save) saveSettingsDebounced();
+    if (announce) {
+        setStatus(isSt
+            ? '已切换为「使用 ST 当前连接」：AI 适配直接借用 ST「API 连接」的模型与额度，无需填写地址与 Key。'
+            : '已切换为「自定义接口」：请在下面填写接口地址、API Key 与模型后点「保存设置」。', 'info');
+    }
+}
+
+/** 刷新「调用方式」下方的状态提示 + 折叠标题上的模式徽标 */
+function renderStHint() {
+    const ai = extension_settings[MODULE_NAME].ai;
+    const $hint = $('#cardlore_ai_st_hint');
+    if (ai.apiMode === 'custom') {
+        $hint.attr('class', 'cardlore_ai_st_hint')
+            .text('自定义接口模式：AI 适配会直接请求下面填写的 OpenAI 兼容地址，需要自己的 API Key。');
+        $('#cardlore_ai_mode_badge').text('自定义接口');
+        return;
+    }
+    const st = stConnectionInfo();
+    $('#cardlore_ai_mode_badge').text(st.ok ? `${ST_PRESET_NAME} · ${st.model}` : ST_PRESET_NAME);
+    if (!st.ok) {
+        $hint.attr('class', 'cardlore_ai_st_hint cardlore_ai_st_hint_warn')
+            .text('ST「API 连接」里没检测到模型：请先在 ST 顶部选好来源与模型，或改用「自定义接口」。');
+        return;
+    }
+    $hint.attr('class', 'cardlore_ai_st_hint')
+        .text(`免填 Key：将使用 ST「API 连接」的 ${st.label} · ${st.model}。`);
 }
 
 /** 清空当前解析预览（保留输入框文本，便于修改后重新解析） */
@@ -660,33 +825,48 @@ function onAiConvert() {
         return;
     }
     const ai = extension_settings[MODULE_NAME].ai;
-    if (!ai.apiUrl) {
-        setStatus('请先配置 AI 接口地址（展开「AI 接口设置」填写并保存）。', 'error');
-        return;
-    }
-    if (!ai.model) {
-        setStatus('请先填写模型名称（如 gpt-4o-mini）。', 'error');
-        return;
+    const useSt = ai.apiMode !== 'custom';
+    let st = null;
+    if (useSt) {
+        st = stConnectionInfo();
+        if (!st.ok) {
+            setStatus('没读到 ST「API 连接」的模型：请先在 ST 顶部「API 连接」里选好来源与模型，或展开「AI 接口设置」切到「自定义接口」。', 'error');
+            return;
+        }
+    } else {
+        if (!ai.apiUrl) {
+            setStatus('请先配置 AI 接口地址（展开「AI 接口设置」填写并保存）。', 'error');
+            return;
+        }
+        if (!ai.model) {
+            setStatus('请先填写模型名称（如 gpt-5.4-nano）。', 'error');
+            return;
+        }
     }
 
     (async () => {
         try {
-            setBusy(true, 'AI 正在整理文本…');
+            setBusy(true, useSt
+                ? `AI 正在整理文本（ST「API 连接」· ${st.model}）…`
+                : 'AI 正在整理文本…');
             const mergedCount = materials.length;
-            const formatted = await aiConvert(text, ai);
+            const formatted = await aiConvert(text, ai, useSt);
             $('#cardlore_input').val(formatted);
             // 素材内容已并入整理结果（写回输入框），清空素材列表防止再次合并造成重复
             if (mergedCount) {
                 materials = [];
                 reRenderMaterials();
             }
-            setStatus(mergedCount
-                ? `AI 整理完成（已并入 ${mergedCount} 个素材文件并清空素材列表），已自动解析预览。`
-                : 'AI 整理完成，已自动解析预览。', 'info');
+            const via = useSt ? `经由 ST「API 连接」· ${st.model}` : `自定义接口 · ${ai.model}`;
+            const merge = mergedCount ? `；已并入 ${mergedCount} 个素材文件并清空素材列表` : '';
+            // 解析状态会紧接着覆盖状态栏，这里把「AI 适配」来源交给 onParse 一并显示，避免信息一闪而过
+            lastAiNote = `AI 适配完成（${via}${merge}）。`;
+            setStatus(lastAiNote, 'info');
             onParse();
         } catch (err) {
             console.error('[CardLore] AI convert failed', err);
-            setStatus(`AI 适配失败：${err.message || err}`, 'error');
+            const tip = useSt ? '' : '（若这个接口不可用，可在「AI 接口设置 → 调用方式」切到「使用 ST 当前连接」）';
+            setStatus(`AI 适配失败：${err.message || err}${tip}`, 'error');
             toastr.error(String(err.message || err), 'CardLore AI');
         } finally {
             setBusy(false);
@@ -694,8 +874,71 @@ function onAiConvert() {
     })();
 }
 
-/** 调用 OpenAI 兼容 chat/completions，返回整理后的文本 */
-async function aiConvert(rawText, ai) {
+/**
+ * 调用 AI 整理文本。
+ * @param {string} rawText 原始文本
+ * @param {object} ai CardLore AI 设置
+ * @param {boolean} useSt true = 通过 ST「API 连接」发送；false = 直连自定义 OpenAI 兼容接口
+ * @returns {Promise<string>} 整理后的文本
+ */
+async function aiConvert(rawText, ai, useSt) {
+    return useSt
+        ? aiConvertViaSt(rawText, ai.prompt || DEFAULT_AI_PROMPT)
+        : aiConvertDirect(rawText, ai);
+}
+
+/**
+ * 走 ST 内置请求服务（ChatCompletionService → /api/backends/chat-completions/generate），
+ * 直接复用 ST「API 连接」的来源、模型、额度与已保存的 Key，用户无需在插件里再填任何凭据。
+ */
+async function aiConvertViaSt(rawText, promptText) {
+    const st = stConnectionInfo();
+    if (!st.ok) throw new Error('ST「API 连接」里没有可用的模型，请先设置');
+
+    const service = getContext()?.ChatCompletionService;
+    if (!service?.processRequest) {
+        throw new Error('当前 ST 版本不支持内置请求服务，请在「AI 接口设置」里改用「自定义接口」');
+    }
+
+    const s = oai_settings || {};
+    const payload = {
+        stream: false,
+        messages: [
+            { role: 'system', content: promptText },
+            { role: 'user', content: rawText },
+        ],
+        model: st.model,
+        chat_completion_source: st.source,
+        max_tokens: ST_MAX_OUTPUT_TOKENS,
+        temperature: 0.3,
+        use_sysprompt: true,
+        // 与 ST 主连接一致的路由参数（未设置的值会被 ST 的 createRequestData 剔除）
+        custom_url: s.custom_url,
+        reverse_proxy: s.reverse_proxy,
+        proxy_password: s.proxy_password,
+        zai_endpoint: s.zai_endpoint,
+        siliconflow_endpoint: s.siliconflow_endpoint,
+        minimax_endpoint: s.minimax_endpoint,
+        vertexai_region: s.vertexai_region,
+        azure_base_url: s.azure_base_url,
+        azure_deployment_name: s.azure_deployment_name,
+        azure_api_version: s.azure_api_version,
+        workers_ai_account_id: s.workers_ai_account_id,
+        openrouter_providers: s.openrouter_providers,
+        openrouter_quantizations: s.openrouter_quantizations,
+        openrouter_allow_fallbacks: s.openrouter_allow_fallbacks,
+    };
+
+    const result = await service.processRequest(payload, {}, true);
+    const content = typeof result === 'string' ? result : result?.content;
+    if (typeof content !== 'string' || !content.trim()) {
+        throw new Error('ST「API 连接」没有返回可用内容，请确认该连接能正常聊天');
+    }
+    return stripCodeFence(content.trim());
+}
+
+/** 直连用户填写的 OpenAI 兼容接口（chat/completions） */
+async function aiConvertDirect(rawText, ai) {
     const url = normalizeChatUrl(ai.apiUrl);
     const headers = { 'Content-Type': 'application/json' };
     if (ai.apiKey) headers['Authorization'] = `Bearer ${ai.apiKey}`;
@@ -742,12 +985,16 @@ function normalizeChatUrl(base) {
 
 function saveAiSettings() {
     const settings = extension_settings[MODULE_NAME];
+    settings.ai.apiMode = $('#cardlore_ai_mode_custom').hasClass('cardlore_ai_mode_active') ? 'custom' : 'st';
     settings.ai.apiUrl = String($('#cardlore_ai_url').val() || '').trim();
     settings.ai.apiKey = String($('#cardlore_ai_key').val() || '').trim();
     settings.ai.model = String($('#cardlore_ai_model').val() || '').trim();
     settings.ai.prompt = String($('#cardlore_ai_prompt').val() || '');
     saveSettingsDebounced();
-    setStatus('AI 设置已保存。', 'info');
+    const st = stConnectionInfo();
+    setStatus(settings.ai.apiMode === 'st'
+        ? `AI 设置已保存（调用方式：使用 ST 当前连接${st.ok ? ` · ${st.label} · ${st.model}` : ''}）。`
+        : 'AI 设置已保存（调用方式：自定义接口）。', 'info');
 }
 
 function resetAiPrompt() {
@@ -770,6 +1017,8 @@ function setBusy(busy, text) {
 /* ---------------- 解析预览 ---------------- */
 
 function onParse() {
+    const aiNote = lastAiNote;
+    lastAiNote = '';
     const text = combinedInputText();
     if (!text.trim()) {
         setStatus('请先粘贴文本或添加素材文件。', 'warn');
@@ -789,7 +1038,7 @@ function onParse() {
     lastResult = { ast, card, world };
     applyArmed = false;
     $('#cardlore_apply').text('应用：创建角色+世界书');
-    renderPreview();
+    renderPreview(aiNote);
 }
 
 function collectErrors(result) {
@@ -809,7 +1058,11 @@ function collectWarnings(result) {
     ];
 }
 
-function renderPreview() {
+/**
+ * 渲染解析预览。
+ * @param {string} [aiNote] 紧随解析摘要显示的「AI 适配完成」提示（可选）
+ */
+function renderPreview(aiNote = '') {
     const r = lastResult;
     if (!r) return;
     const errors = collectErrors(r);
@@ -860,7 +1113,7 @@ function renderPreview() {
     `);
     const summary = `解析完成：${errors.length ? `发现 ${errors.length} 个错误` : '无错误'}，${warnings.length} 条警告。`;
     const hint = errors.length ? ' 可使用「AI适配」进行一键适配「特定格式」。' : '';
-    setStatus(summary + hint, errors.length ? 'warn' : 'info');
+    setStatus(summary + hint + (aiNote ? ' ' + aiNote : ''), errors.length ? 'warn' : 'info');
 }
 
 /* ---------------- 应用 / 导出 ---------------- */

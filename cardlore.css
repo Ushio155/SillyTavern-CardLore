@@ -349,6 +349,87 @@
     white-space: nowrap;
 }
 
+/* 「默认方案」条目：琥珀色描边 + 「推荐」徽标，与其它厂商方案区分 */
+.cardlore_ai_preset_st {
+    border-color: rgba(242, 201, 76, 0.45);
+    background: rgba(242, 201, 76, 0.06);
+}
+
+.cardlore_ai_preset_active {
+    border-color: rgba(242, 201, 76, 0.75);
+}
+
+.cardlore_ai_preset_badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 6px;
+    border-radius: 8px;
+    font-size: 0.7em;
+    line-height: 1.6;
+    color: #1b1b1b;
+    background: #f2c94c;
+    vertical-align: middle;
+}
+
+/* 调用方式切换（使用 ST 当前连接 / 自定义接口） */
+.cardlore_ai_mode {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 2px 0 4px;
+}
+
+.cardlore_ai_mode_label {
+    font-size: 0.85em;
+    opacity: 0.85;
+}
+
+.cardlore_ai_mode_row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.cardlore_ai_mode_btn {
+    width: auto;
+    white-space: nowrap;
+    font-size: 0.85em;
+    padding: 3px 10px;
+}
+
+.cardlore_ai_mode_active {
+    border: 1px solid rgba(242, 201, 76, 0.9) !important;
+    background: rgba(242, 201, 76, 0.18);
+    color: #f2c94c;
+}
+
+.cardlore_ai_st_hint {
+    font-size: 0.78em;
+    opacity: 0.75;
+    line-height: 1.5;
+}
+
+.cardlore_ai_st_hint_warn {
+    color: #ffb84d;
+    opacity: 0.95;
+}
+
+/* ST 模式下不参与请求的自定义字段，灰显提示 */
+.cardlore_ai_settings_body .cardlore_ai_custom_row.cardlore_ai_custom_off {
+    opacity: 0.5;
+}
+
+.cardlore_ai_mode_badge {
+    margin-left: 6px;
+    padding: 0 6px;
+    border-radius: 8px;
+    font-size: 0.72em;
+    line-height: 1.7;
+    color: #f2c94c;
+    border: 1px solid rgba(242, 201, 76, 0.45);
+    background: rgba(242, 201, 76, 0.12);
+}
+
 .cardlore_preview {
     display: flex;
     flex-direction: column;
@@ -714,6 +795,14 @@
     .cardlore_ai_preset_use {
         padding: 8px 12px;
         text-align: center;
+    }
+
+    .cardlore_ai_mode_row .cardlore_ai_mode_btn {
+        flex: 1 1 auto;
+        min-height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .cardlore_ai_settings_body label {

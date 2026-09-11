@@ -34,9 +34,9 @@ https://github.com/Ushio155/SillyTavern-CardLore
 1. 粘贴**任意原始文本**（无需关心插件格式）。输入框右上角「**展开**」可切换全屏编辑，方便查看和修改整段文本（编辑实时同步，`Esc` 或「完成」收起；全屏内也可直接「解析预览」）。
    - 也可以用本地文件作为素材：提示行「载入示例」右侧的琥珀色「**导入素材**」支持拖入或点击选择 **.txt / .md / .docx**（可多选、可重复添加），添加后文件名以标签显示在输入框下方（点 × 移除）。适合导入 Word/纯文本里的设定稿、小说、大纲等长文，再交给「AI 适配」整理。
 2. 点「**AI 适配**」（🤖，解析预览左侧）——通过 **OpenAI 兼容接口**自动整理成插件格式并立即预览。已添加的素材文件会与输入框文本**一并合并**送入；整理完成回填后素材列表自动清空，避免重复合并。
-   - 首次使用：展开「AI 接口设置」→ 展开「**预设方案**」选择一家（DeepSeek / OpenAI / Kimi / 通义 / GLM / 硅基流动 / Groq / OpenRouter / 本地 Ollama），点「填入」自动填好地址与模型；填 API Key 后点「保存设置」。
-   - 或保留「自定义 OpenAI 兼容」选项，手动填接口地址 / API Key / 模型。
-   - 接口地址留空会自动预填 ST「自定义 OpenAI」或 DeepSeek 源配置。
+   - **默认方案（推荐，免填 Key）**：预设方案列表第一项。直接借用 ST 顶部「**API 连接**」里的来源、模型与额度——插件内不用填接口地址和 API Key，ST 里能正常聊天就能用。切换方式：「预设方案」点第一项「**启用**」，或在「AI 接口设置 → 调用方式」里点「使用 ST 当前连接」。
+   - 想用别的 Key/额度：展开「AI 接口设置」→ 展开「**预设方案**」选一家（DeepSeek / OpenAI / Kimi / 通义 / GLM / 硅基流动 / Groq / OpenRouter / 本地 Ollama），点「填入」自动填好地址与模型（默认填入各家当前最具性价比的模型，如 DeepSeek 为 `deepseek-v4-flash`）；填 API Key 后点「保存设置」。
+   - 「调用方式」也可直接手动切到「自定义接口」，自行填 OpenAI 兼容地址 / API Key / 模型（不填 Key 时地址会按 ST 当前来源预填）。
    - 提示词可自行修改；点「重置默认提示词」一键恢复，避免改崩。
 3. 「解析预览」→ 查看角色卡字段 / 世界书条目 / 校验报告（AI 整理后会自动执行）。
 4. 「清空预览」→ 清除当前解析结果（输入框文本保留，便于修改后重新解析）。
@@ -91,6 +91,7 @@ AI-DISCLOSURE.md  # AI 开发声明（DeepSeek Harness）
 | `saveWorldInfo` / `updateWorldInfoList` / `getFreeWorldName` | `public/scripts/world-info.js` |
 | `getCharacters` / `selectCharacterById` / `getRequestHeaders` / `name1` / `saveSettingsDebounced` | `public/script.js` |
 | `extension_settings` / `oai_settings` | `public/scripts/extensions.js` / `public/scripts/openai.js` |
+| `getContext().ChatCompletionService`（「默认方案」走 ST「API 连接」发请求） | `public/scripts/custom-request.js`（`ChatCompletionService.processRequest` → `POST /api/backends/chat-completions/generate`） |
 | 「扩展程序」菜单 `#extensionsMenu`（`extensionsMenuExtensionButton`）、设置容器 `#extensions_settings` | `public/scripts/templates/wandMenu.html` / `public/index.html` |
 | 角色导入 `POST /api/characters/import`（json） | `src/endpoints/characters.js`（readFromV2 保留 extensions.*） |
 | JSZip（.docx 解压，运行时动态加载） | ST 自带静态资源 `public/lib/jszip.min.js` |
@@ -100,6 +101,7 @@ AI-DISCLOSURE.md  # AI 开发声明（DeepSeek Harness）
 - [ ] 刷新后，角色列表工具栏「新建角色」左侧出现琥珀色 ✨ 按钮，悬停显示"一键生成"
 - [ ] （可选）顶栏「扩展程序」魔法棒菜单内也有 ✨ 图标
 - [ ] 生成器内「AI 适配」在「解析预览」左侧；配置好接口后，粘贴任意文本点「AI 适配」能自动整理并预览
+- [ ] 「默认方案」：预设方案第一项显示 ST「API 连接」的当前来源与模型；点「启用」后不填地址/Key 也能「AI 适配」成功（地址/Key/模型三行置灰）
 - [ ] 输入框右上角「展开」可全屏编辑：文本实时同步、`Esc`/「完成」收起、全屏内「解析预览」可用
 - [ ] 「重置默认提示词」能恢复默认提示词
 - [ ] 「应用」→ 角色库出现新角色，且「世界书」下拉里出现 `林晚的世界书`
