@@ -28,7 +28,9 @@ import {
     retentionRatio,
     MIN_RETENTION,
     REPAIR_SYSTEM_SUFFIX,
+    EMPTY_OUTPUT_SUFFIX,
     CONTINUE_INSTRUCTION,
+    fixOutputName,
 } from './src/aiprompt.js';
 
 const MODULE_NAME = 'CardLore';
@@ -831,6 +833,8 @@ function onAiConvert() {
             const notes = [];
             if (res.repaired) notes.push('首次输出跑偏，已自动修正重试');
             if (res.continued) notes.push('检测到截断，已自动续写');
+            if (res.nameFixed) notes.push(`「名称」已按素材卡名校正为「${res.nameFixed.to}」`);
+            if (res.nameWarning) notes.push(res.nameWarning);
             if (!res.guardPassed) notes.push('输出结构可能仍不合格式，建议再点一次或换模型');
             else if (res.lowRetention) notes.push(`输出与素材文字重合度偏低（${(res.retention * 100).toFixed(0)}%），可能改写过多，请核对`);
             const noteText = notes.length ? `（${notes.join('；')}）` : '';
@@ -851,15 +855,17 @@ function onAiConvert() {
 
 /**
  * 调用 AI 整理文本（分层消息 + 输出守卫）。
- * 流程：① 分层消息请求（system=转换规则 / user=素材数据+尾部锚定）
+ * 流程：① 分层消息请求（system=转换规则 / user=素材预扫描+素材数据+尾部锚定）
  *       ② 输出没落在固定字段结构内（把素材当指令执行、照素材模板作答、空输出）→ 追加修正层重试，最多 3 次
+ *          （空输出用 EMPTY_OUTPUT_SUFFIX，其余用 REPAIR_SYSTEM_SUFFIX）
  *       ③ 结构对但内容几乎全是新编的（忠实度低于 MIN_RETENTION）→ 同样重试
  *       ④ 末尾像被 max_tokens 截断 → 追加一次续写
  *       ⑤ 多次结果取「字段命中 → 素材保留率」更优的一份
+ *       ⑥ 名称守卫：素材有显式卡名/作品名时，把被模型写成用户角色名的「名称」校正回来
  * @param {string} rawText 原始文本
  * @param {object} ai CardLore AI 设置
  * @param {boolean} useSt true = 通过 ST「API 连接」发送；false = 直连自定义 OpenAI 兼容接口
- * @returns {Promise<{text: string, guardPassed: boolean, lowRetention: boolean, retention: number, repaired: boolean, continued: boolean}>}
+ * @returns {Promise<{text: string, guardPassed: boolean, lowRetention: boolean, retention: number, repaired: boolean, continued: boolean, nameFixed: ?{from: string, to: string}, nameWarning: string}>}
  */
 async function aiConvert(rawText, ai, useSt) {
     const promptText = ai.prompt || DEFAULT_AI_PROMPT;
@@ -870,9 +876,12 @@ async function aiConvert(rawText, ai, useSt) {
     let repaired = false;
     let continued = false;
 
-    // 守卫一/三：结构不对或忠实度太低就重试（空输出来自推理模型把 token 预算用在思考上，同样靠这层兜住）
+    // 守卫一/三：结构不对或忠实度太低就重试。
+    // 上一次是空输出（推理模型把 token 预算全用在思考上）时用专门的修正层，其余情况用"跑偏"修正层。
     for (let attempt = 1; attempt <= MAX_AI_ATTEMPTS; attempt++) {
-        const sys = attempt === 1 ? promptText : `${promptText}\n\n${REPAIR_SYSTEM_SUFFIX}`;
+        const sys = attempt === 1
+            ? promptText
+            : `${promptText}\n\n${text.trim() ? REPAIR_SYSTEM_SUFFIX : EMPTY_OUTPUT_SUFFIX}`;
         const res = await send(buildAiMessages(sys, rawText));
         if (res.content.trim()) {
             const before = text;
@@ -912,6 +921,20 @@ async function aiConvert(rawText, ai, useSt) {
         }
     }
 
+    // 守卫四：名称归属 —— 素材里有显式卡名/作品名时，把输出「名称」校正成它
+    // （模型的典型错误：把被"你"指代的用户角色当成卡名，或写成"用户名（《作品名》）"）
+    let nameFixed = null;
+    let nameWarning = '';
+    const nameFix = fixOutputName(text, rawText);
+    if (nameFix.changed) {
+        console.warn(`[CardLore] 「名称」不符合素材卡名，已由「${nameFix.before}」校正为「${nameFix.expected}」`);
+        text = nameFix.text;
+        nameFixed = { from: nameFix.before, to: nameFix.expected };
+    } else if (nameFix.weakOnly) {
+        console.warn(`[CardLore] 素材里出现过作品名「${nameFix.expected}」，但「名称」写成了「${nameFix.before}」`);
+        nameWarning = `素材里出现过作品名「${nameFix.expected}」，但「名称」写成了「${nameFix.before}」，请核对`;
+    }
+
     // 两次守卫都没救回来：空输出通常意味着推理把 max_tokens 预算吃完了
     if (!text.trim()) {
         throw new Error('AI 没有返回任何正文：请再点一次「AI 适配」（推理模型偶尔把输出预算全用在思考上），或确认自定义接口兼容 OpenAI chat/completions、换用非推理模型');
@@ -925,6 +948,8 @@ async function aiConvert(rawText, ai, useSt) {
         lowRetention: retention < MIN_RETENTION,
         repaired,
         continued,
+        nameFixed,
+        nameWarning,
     };
 }
 
