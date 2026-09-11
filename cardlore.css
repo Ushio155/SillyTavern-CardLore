@@ -108,6 +108,11 @@
     -webkit-overflow-scrolling: touch;
 }
 
+/* 弹窗内容区同样是滚动容器：子块不允许被压缩（含 overflow:hidden 的块会被压扁裁切） */
+.cardlore_body > * {
+    flex: 0 0 auto;
+}
+
 .cardlore_hint {
     font-size: 0.85em;
     opacity: 0.85;
@@ -278,6 +283,12 @@
     padding: 8px 10px;
     background: var(--SmartThemeBlurTintColor, #1e1e1e);
     border-top: 1px solid rgba(128, 128, 128, 0.25);
+}
+
+/* 折叠区是滚动容器：子块一律不许被 flex 压缩，
+   否则带 overflow:hidden 的子块（如「预设方案」）会被压成一条线而"消失" */
+.cardlore_ai_settings_body > * {
+    flex: 0 0 auto;
 }
 
 .cardlore_ai_settings_body .flex-container {
