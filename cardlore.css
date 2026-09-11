@@ -291,6 +291,14 @@
     flex: 0 0 auto;
 }
 
+/* 折叠区整体字号是 0.85em，会把里面的「保存设置 / 重置默认提示词」一并缩小一圈，
+   看起来比上方工具栏的「导出 JSON / 应用…」小一号。
+   这里把操作条自身的字号还原成面板基准（1 / 0.85），于是它内部的按钮与上方按钮
+   受完全相同的规则影响 —— 无论主题/字号设置如何，两排按钮尺寸天然一致。 */
+.cardlore_ai_settings_body > .cardlore_toolbar {
+    font-size: calc(1em / 0.85);
+}
+
 .cardlore_ai_settings_body .flex-container {
     gap: 6px;
 }
@@ -936,6 +944,13 @@
 
     #cardlore_apply {
         order: 5;
+        flex: 1 1 calc((100% - 6px) / 2);
+    }
+
+    /* 「AI 接口设置」折叠区底部的保存/重置：与上方「导出 JSON / 应用…」同款两等宽铺满整行
+       （≤640 段的 .cardlore_toolbar .menu_button 是 flex:0 0 auto，会被 ST 的 width:min-content 收成窄条并居中）*/
+    #cardlore_ai_save,
+    #cardlore_ai_reset {
         flex: 1 1 calc((100% - 6px) / 2);
     }
 }
