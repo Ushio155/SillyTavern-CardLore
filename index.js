@@ -16,6 +16,7 @@ import { parse } from './src/parser.js';
 import { buildCard, buildBook } from './src/builder.js';
 import { applyToST, downloadJson } from './src/writer.js';
 import { readSourceFile, isSupportedSourceFile, MAX_SOURCE_FILE_SIZE } from './src/filetext.js';
+import { buildOutputText, collectMissingLines, isFidelityAlarm } from './src/fidelity.js';
 import {
     DEFAULT_AI_PROMPT,
     DEFAULT_AI_PROMPT_VERSION,
@@ -1105,6 +1106,26 @@ function onParse() {
     if (bookAsts.length) {
         const combined = { type: 'world', entries: bookAsts.flatMap(b => b.entries) };
         world = buildBook(combined);
+    }
+
+    // 解析保真自检：有内容确实没落位时显式告警，而不是静默写出一张缺内容的卡。
+    // 只在解析「完全干净」（无错误也无告警）时跑，避免和已有告警重复报同一件事。
+    const parseErrors = ast.errors.length + card.errors.length + (world?.errors?.length ?? 0);
+    const parseWarnings = ast.warnings.length + card.warnings.length + (world?.warnings?.length ?? 0);
+    if (!parseErrors && !parseWarnings) {
+        const outputText = buildOutputText([
+            ...Object.values(card.createSave).filter(v => typeof v === 'string'),
+            ...(card.createSave.alternate_greetings ?? []),
+            ...Object.values(world?.book?.entries ?? {}).flatMap(e => [e.comment, ...(e.key ?? []), e.content]),
+        ]);
+        const missing = collectMissingLines(text, outputText);
+        if (isFidelityAlarm(missing, text)) {
+            const head = missing.slice(0, 3).map(m => `第 ${m.line} 行「${m.snippet}…」`).join('、');
+            ast.warnings.push({
+                line: missing[0].line,
+                message: `有 ${missing.length} 行内容没有写入角色卡（${head}）：请检查这些行的字段名是否写成「名称/描述/人格/开场白/系统提示/深度提示/作者注」标准写法`,
+            });
+        }
     }
 
     lastResult = { ast, card, world };

@@ -7,11 +7,14 @@
  * 格式规则（与方案文档 §3 一致）：
  *  - 顶层区块： 【角色卡】 / 【角色书】 / 【世界书】 （兼容 [角色卡] / # 角色卡）
  *  - 字段行：   键: 值  （顶格、键≤40字符、兼容全角冒号）
- *  - 多行值：   后续行以 ≥1 空格缩进，或为无冒号的裸文本行，直到下一个字段/标题
+ *  - 多行值：   后续行以 ≥1 空格缩进，或为无冒号的裸文本行，
+ *               直到下一个「已知字段行 / 区块头 / 条目头」为止
+ *  - 空行：     多行字段内的空行属于内容（Markdown 段落分隔、表格分隔），**不结束字段**
+ *  - Markdown 标题：字段内以 `#` 开头的行属于内容（如「## 核心规则」）；
+ *               只有没有正在累积的字段时，`#` 开头行才当作注释
  *  - 数组值：   `- 项` 或 `* 项` 的 bullet 列表；或 `; , 、` 分隔（由 builder 拆分）
  *  - 世界书条目： `### 条目：名称` （兼容 ## / - 前缀）
  *  - 内容字段： 条目内一旦出现 `内容:`，其后所有非标题行（含冒号/#/空行）都属于内容
- *  - 注释：    `#` 开头行在非内容模式下视为注释
  */
 
 export const BLOCK_TYPES = {
@@ -32,6 +35,17 @@ const BLOCK_TYPE_BY_NAME = {
     '角色书': BLOCK_TYPES.EMBEDDED_BOOK,
     '世界书': BLOCK_TYPES.WORLD_BOOK,
 };
+
+/**
+ * 长文本字段：这些字段里以 `#` 开头的行是 Markdown 标题（属于内容，必须逐字保留）。
+ * 短字段（名称/标签/版本…）里的 `#` 行仍按注释丢弃，避免注释被并进字段值。
+ */
+const PROSE_FIELDS = new Set([
+    '描述', '人格', '性格', '场景', '世界观场景', '开场白', '首条消息', '开场节点',
+    '替代开场白', '备用开场白', '示例对话', '对话示例', '系统提示', '系统提示词',
+    '深度提示', '深度提示词', '作者注', '创作者笔记', '备注', '角色备注',
+    '核心规则', '高频行为', '行为', '特别指令', '内容', '注释',
+]);
 
 /**
  * 已知字段名集合（与 builder.js 的 CARD_FIELD_ALIASES / KEY_ALIASES 保持同步）。
@@ -76,6 +90,20 @@ export function parse(text) {
 
     const addWarning = (line, message) => ast.warnings.push({ line, message });
     const addError = (line, message) => ast.errors.push({ line, message });
+
+    /** 无法归属到任何字段的文本：按当前状态给出可操作的告警，绝不静默丢弃 */
+    const warnOrphan = (lineNo, line) => {
+        const preview = line.trim().slice(0, 40);
+        if (state === 'OUTSIDE') {
+            addWarning(lineNo, `忽略区块外的文本：「${preview}」`);
+        } else if (state === 'BOOK') {
+            addWarning(lineNo, `忽略条目外的文本：「${preview}」（请用「### 条目：名称」开头）`);
+        } else if (state === 'ENTRY') {
+            addWarning(lineNo, `条目「${currentEntry?.name ?? ''}」内无法归属的文本：「${preview}」（请检查字段名或把它并入上一字段）`);
+        } else {
+            addWarning(lineNo, `角色卡区块内无法归属的文本：「${preview}」（前一行不是字段行？这段内容未写入角色卡）`);
+        }
+    };
 
     const startBlock = (type, lineNo) => {
         state = type === BLOCK_TYPES.CARD ? 'CARD' : 'BOOK';
@@ -127,16 +155,20 @@ export function parse(text) {
         }
     };
 
+    /**
+     * 追加续行。
+     * raw 始终保留「逐字原文」（含 `- ` 前缀与空行），bullets 另存去掉记号的列表视图。
+     * 之所以两者都存：raw 是写入角色卡时的唯一来源（保证不漏内容），
+     * bullets 只是数组字段的便捷视图，不能被当成字段的全部值。
+     */
     const appendContinuation = (text, lineNo) => {
         if (!currentField) return; // 不应发生
         const target = currentEntry ? currentEntry.fields : ast.card;
         const field = target[currentField];
+        field.raw = field.raw ? `${field.raw}\n${text}` : text;
         const bullet = text.match(BULLET_RE);
         if (bullet && !contentMode) {
-            // 内容模式下 bullet 视为正文
             (field.bullets = field.bullets ?? []).push(bullet[1]);
-        } else {
-            field.raw = field.raw ? `${field.raw}\n${text}` : text;
         }
         field.lines.push(lineNo);
     };
@@ -166,14 +198,18 @@ export function parse(text) {
             continue;
         }
 
-        // 4) 注释
-        if (COMMENT_RE.test(line)) {
+        // 4) 注释：没有正在累积的字段时，`#` 开头行是注释；
+        //    字段内只有「长文本字段」才把 `#` 行当 Markdown 标题保留（「## 核心规则」「## 角色备注」），
+        //    短字段（名称/标签…）里的 `#` 行仍按注释丢弃。
+        if (COMMENT_RE.test(line) && !(currentField && PROSE_FIELDS.has(currentField))) {
             continue;
         }
 
-        // 5) 空行：结束当前字段的多行累积（非内容模式）
+        // 5) 空行：字段内的空行是内容的一部分（段落/表格分隔），不结束字段累积。
+        //    历史行为是「空行 → currentField = null」，会让下方所有正文被静默丢弃
+        //    （AI 输出「系统提示: 首行 + ## 核心规则…」这类 Markdown 结构必踩）。
         if (line.trim() === '') {
-            currentField = null;
+            if (currentField) appendContinuation('', lineNo);
             continue;
         }
 
@@ -189,12 +225,9 @@ export function parse(text) {
                 }
                 if (currentField) {
                     appendContinuation(line, lineNo);
-                } else if (state === 'OUTSIDE') {
-                    addWarning(lineNo, `忽略区块外的文本：「${line.slice(0, 40)}」`);
-                } else if (state === 'BOOK') {
-                    addWarning(lineNo, `忽略条目外的文本：「${line.slice(0, 40)}」（请用「### 条目：名称」开头）`);
+                } else {
+                    warnOrphan(lineNo, line);
                 }
-                // state === 'CARD' 且无当前字段：无法归属，忽略
                 continue;
             }
 
@@ -223,12 +256,10 @@ export function parse(text) {
                 }
             }
             appendContinuation(line, lineNo);
-        } else if (state === 'OUTSIDE') {
-            addWarning(lineNo, `忽略区块外的文本：「${line.slice(0, 40)}」`);
-        } else if (state === 'BOOK') {
-            addWarning(lineNo, `忽略条目外的文本：「${line.slice(0, 40)}」（请用「### 条目：名称」开头）`);
+        } else {
+            // 没有正在累积的字段：裸文本无法归属 → 告警（不再静默丢弃）
+            warnOrphan(lineNo, line);
         }
-        // state === 'CARD' 且无当前字段：裸文本无法归属 → 忽略
     }
 
     // 收尾校验

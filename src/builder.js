@@ -82,11 +82,11 @@ const KEY_ALIASES = {
     outletName: ['出口名'],
 };
 
-/** 字符串 → 数组：按 ; ，, 、 及换行拆分 */
+/** 字符串 → 数组：按 ; ，, 、 及换行拆分（并去掉行首的 `- ` / `* ` 列表记号） */
 export function splitList(value) {
-    return value
+    return String(value ?? '')
         .split(/[;；,，、\n]/)
-        .map(s => s.trim())
+        .map(s => s.trim().replace(/^[-*+•]\s+/, '').trim())
         .filter(Boolean);
 }
 
@@ -110,11 +110,28 @@ function toNullableNum(value) {
     return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * 字段值：raw 是逐字原文（parser 保证含多行、空行与 `- ` 记号），是唯一可信来源。
+ * bullets 只是列表视图，仅在 raw 为空时兜底 —— 早期版本优先取 bullets，
+ * 会把「标签行上的第一条」（如「替代开场白: - 节点二」）丢掉。
+ */
 function fieldValue(field) {
     if (!field) return '';
-    // bullet 列表优先（数组字段）
+    const raw = typeof field.raw === 'string' ? field.raw.trim() : '';
+    if (raw) return raw;
     if (field.bullets && field.bullets.length > 0) return field.bullets.join('\n');
-    return field.raw;
+    return '';
+}
+
+/** 字段值 → 数组（按行拆分，去掉行首 `- ` 记号；raw 为空时退回 bullets） */
+function listItems(field) {
+    if (!field) return [];
+    const source = fieldValue(field);
+    if (!source.trim()) return [];
+    return source
+        .split('\n')
+        .map(s => s.trim().replace(/^[-*+•]\s+/, '').trim())
+        .filter(Boolean);
 }
 
 function findField(fields, keys) {
@@ -127,18 +144,21 @@ function findField(fields, keys) {
 /**
  * 把"节点N：…"开头的多段文本按节点拆分（保留节点标题与内容）。
  * 用于：开场白中若包含多个开场节点，节点一留作开场白、其余转入替代开场白。
+ * 兼容 Markdown 粗体标记（`**节点一：…**`）与节点之间的空行。
  * @param {string} text
  * @returns {string[]}
  */
 function splitNodeSegments(text) {
     if (!text) return [];
-    const parts = text.split(/(节点[一二三四五六七八九十百\d]+\s*[:：])/);
+    const source = String(text);
+    // 标记含可选粗体前缀（`**节点一：…**`），用「捕获组切分 + 重组」保留记号本身
+    const parts = source.split(/(\*{0,3}\s*节点[一二三四五六七八九十百\d]+\s*[:：])/);
     const segments = [];
     for (let i = 1; i < parts.length; i += 2) {
         const seg = ((parts[i] ?? '') + (parts[i + 1] ?? '')).trim();
         if (seg) segments.push(seg);
     }
-    // 节点前的引言/前导文本并入第一个节点
+    // 第一个节点之前的引言/前导文本并入第一个节点
     if (segments.length > 1 && parts[0] && parts[0].trim()) {
         segments[0] = `${parts[0].trim()}\n${segments[0]}`;
     }
@@ -202,10 +222,18 @@ export function buildCard(ast) {
     const rawFirstMessage = fieldValue(get('first_mes'));
     const nodeSegments = splitNodeSegments(rawFirstMessage);
     const firstMessage = nodeSegments.length > 1 ? nodeSegments[0] : rawFirstMessage;
-    const altGreetings = [
-        ...(fieldValue(get('alternate_greetings')) || '').split('\n').map(s => s.trim()).filter(Boolean),
+    // 替代开场白：显式列表 + 开场白里多出来的节点；按文本去重（避免同一节点既在列表里又被切出来）
+    const altGreetings = [];
+    const seenGreetings = new Set();
+    for (const item of [
+        ...listItems(get('alternate_greetings')),
         ...(nodeSegments.length > 1 ? nodeSegments.slice(1) : []),
-    ];
+    ]) {
+        const text = item.trim();
+        if (!text || seenGreetings.has(text)) continue;
+        seenGreetings.add(text);
+        altGreetings.push(text);
+    }
 
     const depthPrompt = {
         prompt: depthPromptText,
