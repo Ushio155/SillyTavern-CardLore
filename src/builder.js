@@ -166,6 +166,28 @@ function splitNodeSegments(text) {
 }
 
 /**
+ * 替代开场白 → 逐条开场白。
+ * **一条 = 一个节点**：从「节点N：」标题起，到下一个标题为止（含紧随其后的正文与缩进续行）。
+ * 原先按行拆会在 AI 写成「标题一行 + 两空格缩进的正文一行」时拆成两条（标题一条、正文一条），
+ * 而提示词同时要求「每条节点一行」和「长内容两空格缩进续行」，这个形状很容易出现。
+ * 没有节点标题时退回逐行（每个 `- ` 列表项一条）。
+ */
+function alternateGreetingItems(field) {
+    const source = fieldValue(field);
+    if (!source.trim()) return [];
+    const segments = splitNodeSegments(source);
+    if (!segments.length) return listItems(field);
+    // 只去掉行首的列表记号（`- ` / `· `，含只剩记号本身的行），行内缩进原样保留，保证逐字保真
+    return segments
+        .map(seg => seg.split('\n')
+            .map(l => l.replace(/^\s*(?:[·•]|[-*+])(?:\s+|$)/, '').trimEnd())
+            .filter(l => l.trim() !== '')
+            .join('\n')
+            .trim())
+        .filter(Boolean);
+}
+
+/**
  * 构建角色卡（两种输出形状）
  * @returns {{ createSave: object, cardData: object, warnings: string[], errors: string[] }}
  */
@@ -226,7 +248,7 @@ export function buildCard(ast) {
     const altGreetings = [];
     const seenGreetings = new Set();
     for (const item of [
-        ...listItems(get('alternate_greetings')),
+        ...alternateGreetingItems(get('alternate_greetings')),
         ...(nodeSegments.length > 1 ? nodeSegments.slice(1) : []),
     ]) {
         const text = item.trim();

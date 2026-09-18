@@ -70,6 +70,50 @@ const KNOWN_FIELDS = new Set([
 ]);
 
 /**
+ * 行首项目符号（「· 」/「• 」/「- 」/「* 」）。
+ * 字段行允许带它：提示词要求条目内容用「· 」子要点展开，模型很自然会把「常量: 是」
+ * 这类元数据行也带上符号；带上就必须照字段处理，否则会被并进内容里静默失效。
+ */
+const LEAD_BULLET_RE = /^\s*(?:[·•]|[-*+])\s+/;
+
+/** 值形状（只在"带 bullet 的字段行"与"内容之后的字段行"这两条宽松路径上校验） */
+const VALUE_SHAPES = {
+    bool: /^(是|否|真|假|true|false|yes|no|1|0|开|关|启用|禁用)$/i,
+    num: /^\d+(\.\d+)?$/,
+    position: /^(before_char|after_char|before|after|antop|an_bottom|atdepth|emtop|embottom|outlet|角色前|角色后|前|后)$/i,
+};
+
+/** 字段 → 值形状；未列出的字段（关键词/组/出口名…）只要值非空即可 */
+const FIELD_VALUE_SHAPE = {
+    常量: 'bool', 常驻注入: 'bool', 忽略预算: 'bool', 排除递归: 'bool', 禁止递归: 'bool',
+    递归延迟: 'bool', 大小写敏感: 'bool', 整词匹配: 'bool', 组覆盖: 'bool', 常驻: 'bool',
+    启用: 'bool', 禁用: 'bool',
+    顺序: 'num', 优先级: 'num', 深度: 'num', 扫描深度: 'num', 概率: 'num', 使用概率: 'num',
+    粘性: 'num', 冷却: 'num', 延迟: 'num', 组权重: 'num',
+    位置: 'position', 插入位置: 'position',
+};
+
+/**
+ * 「内容」之后仍允许被识别的条目元数据字段。
+ * 真实 AI 输出常把「常量: 是」写在条目末尾（提示词只说要标注「常量: 是」，没规定位置），
+ * 内容区默认吞掉一切的话这条就静默失效了。
+ * 刻意不含「内容」「注释」「备注」：它们出现在正文里更像正文而不是字段。
+ */
+const ENTRY_META_FIELDS = new Set([
+    '关键词', '关键字', '触发词', '次要关键词', '次要关键字',
+    '位置', '插入位置', '顺序', '优先级', '深度', '扫描深度',
+    '常量', '常驻注入', '启用', '禁用', '概率', '使用概率',
+    '组', '分组', '组权重', '组覆盖', '常驻', '粘性', '冷却', '延迟', '角色', '提示角色',
+    '大小写敏感', '整词匹配', '忽略预算', '排除递归', '禁止递归', '递归延迟', '出口名',
+]);
+
+function valueShapeOk(key, value) {
+    const shape = FIELD_VALUE_SHAPE[key];
+    if (!shape) return value.length > 0;
+    return VALUE_SHAPES[shape].test(value);
+}
+
+/**
  * @param {string} text 原始文本
  * @returns {{
  *   card: Record<string, {raw: string, bullets: string[]|null, lines: number[]}>,
@@ -173,6 +217,23 @@ export function parse(text) {
         field.lines.push(lineNo);
     };
 
+    /**
+     * 内容区里的条目元数据字段行 → [key, value]，不是元数据字段就返回 null。
+     * 这是宽松路径，所以三重保险：字段名已知 + 该字段尚未定义 + 值形状站得住脚。
+     * 少了后两条，正文里一句「· 位置: 王宫地下」就会被当成字段而把内容吞掉。
+     */
+    const matchEntryMetaField = (line) => {
+        if (!currentEntry) return null;
+        const m = line.replace(LEAD_BULLET_RE, '').match(FIELD_RE);
+        if (!m) return null;
+        const key = m[1].trim();
+        const value = m[2].trim().replace(/\s+#\s.*$/, '');
+        if (!ENTRY_META_FIELDS.has(key)) return null;
+        if (currentEntry.fields[key]) return null;
+        if (!valueShapeOk(key, value)) return null;
+        return [key, value];
+    };
+
     for (let i = 0; i < lines.length; i++) {
         const lineNo = i + 1;
         const raw = lines[i];
@@ -192,8 +253,15 @@ export function parse(text) {
             continue;
         }
 
-        // 3) 内容模式（条目内 内容: 之后）：全部归入内容，直到下一个标题
+        // 3) 内容模式（条目内 内容: 之后）：默认全部归入内容，直到下一个标题。
+        //    例外：条目元数据字段行（真实 AI 输出把「· 常量: 是」写在条目末尾）。
         if (contentMode && state === 'ENTRY') {
+            const meta = matchEntryMetaField(line);
+            if (meta) {
+                addField(meta[0], meta[1], lineNo);
+                contentMode = false;
+                continue;
+            }
             appendContinuation(raw, lineNo);
             continue;
         }
@@ -213,13 +281,19 @@ export function parse(text) {
             continue;
         }
 
-        // 6) 字段行（顶格 键: 值，且键为已知字段名）
+        // 6) 字段行（键: 值，且键为已知字段名）；允许「· 常量: 是」这种带项目符号的写法
+        //    —— 带符号时值形状也要站得住脚，免得把正文里的「· 位置: 王宫地下」当字段
         m = line.match(FIELD_RE);
         if (m) {
             const key = m[1].trim();
+            let matched = KNOWN_FIELDS.has(key) ? m : null;
+            if (!matched && LEAD_BULLET_RE.test(line)) {
+                const m2 = line.replace(LEAD_BULLET_RE, '').match(FIELD_RE);
+                if (m2 && KNOWN_FIELDS.has(m2[1].trim()) && valueShapeOk(m2[1].trim(), m2[2].trim())) matched = m2;
+            }
             // 未知键的冒号行：不是字段，而是上一字段的内容续行（保留而非丢弃）
             // 条目内且尚无「内容」时自动开一个「内容」字段承接，避免污染关键词等字段
-            if (!KNOWN_FIELDS.has(key)) {
+            if (!matched) {
                 if (state === 'ENTRY' && !contentMode && !currentEntry.fields['内容']) {
                     addField('内容', '', lineNo);
                 }
@@ -231,17 +305,18 @@ export function parse(text) {
                 continue;
             }
 
+            const fieldKey = matched[1].trim();
             // 行内注释剥离：` # ...`（# 前须有空白，仅作用于字段首行值；内容区不受影响）
-            let value = m[2].trim().replace(/\s+#\s.*$/, '');
+            let value = matched[2].trim().replace(/\s+#\s.*$/, '');
             if (state === 'OUTSIDE') {
-                addError(lineNo, `区块外的字段「${key}」被忽略（请先写【角色卡】/【世界书】）`);
+                addError(lineNo, `区块外的字段「${fieldKey}」被忽略（请先写【角色卡】/【世界书】）`);
                 continue;
             }
             if (state === 'BOOK' && !currentEntry) {
-                addWarning(lineNo, `世界书区块内、条目外的字段「${key}」被忽略（请用「### 条目：名称」开头）`);
+                addWarning(lineNo, `世界书区块内、条目外的字段「${fieldKey}」被忽略（请用「### 条目：名称」开头）`);
                 continue;
             }
-            addField(key, value, lineNo);
+            addField(fieldKey, value, lineNo);
             continue;
         }
 
