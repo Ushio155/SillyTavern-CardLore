@@ -698,19 +698,14 @@
         align-items: flex-start;      /* 顶部对齐 */
         touch-action: pan-y;          /* 明确允许纵向手势滚动 */
         overscroll-behavior: contain;
-        /* 整页模式"不漏底"：浮层自己带不透明底色（桌面端那层 rgba(0,0,0,.55) 遮罩在手机上
-           没有"外面"可点，留着只会让页面边缘透出后面那层 ST 界面）。
-           为什么写成两层：主题的 --SmartThemeBlurTintColor 多数带 alpha，直接拿它当底色
-           仍然会透；渐变层压纯色就"跟随主题又不透明"。 */
-        background-color: #1e1e1e;
-        background-image: linear-gradient(var(--SmartThemeBlurTintColor, #1e1e1e),
-                                         var(--SmartThemeBlurTintColor, #1e1e1e));
+        /* 这里**不要**加不透明底色：面板本身是半透明的（--SmartThemeBlurTintColor 多数带 alpha），
+           浮层一旦变成实心色，透过去看到的就是那层实心色而不是下面的 ST 界面 ——
+           实测用户反馈「整页都看不到下方页面」。遮罩保持桌面端那份 rgba(0,0,0,.55)。 */
     }
 
     .cardlore_panel {
         width: 100%;                  /* 用容器宽度而非 100vw：避免弹窗竖向滚动条宽度被重复计算，产生横向溢出 */
         max-height: none;             /* 面板自然高度，整块交给弹窗滚动 */
-        min-height: 100%;             /* 内容比一屏短时也占满整屏，免得下面露出一段底色断层 */
         margin: 0;
         border: 0;
         border-radius: 0;
