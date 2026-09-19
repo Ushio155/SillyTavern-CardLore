@@ -698,11 +698,19 @@
         align-items: flex-start;      /* 顶部对齐 */
         touch-action: pan-y;          /* 明确允许纵向手势滚动 */
         overscroll-behavior: contain;
+        /* 整页模式"不漏底"：浮层自己带不透明底色（桌面端那层 rgba(0,0,0,.55) 遮罩在手机上
+           没有"外面"可点，留着只会让页面边缘透出后面那层 ST 界面）。
+           为什么写成两层：主题的 --SmartThemeBlurTintColor 多数带 alpha，直接拿它当底色
+           仍然会透；渐变层压纯色就"跟随主题又不透明"。 */
+        background-color: #1e1e1e;
+        background-image: linear-gradient(var(--SmartThemeBlurTintColor, #1e1e1e),
+                                         var(--SmartThemeBlurTintColor, #1e1e1e));
     }
 
     .cardlore_panel {
         width: 100%;                  /* 用容器宽度而非 100vw：避免弹窗竖向滚动条宽度被重复计算，产生横向溢出 */
         max-height: none;             /* 面板自然高度，整块交给弹窗滚动 */
+        min-height: 100%;             /* 内容比一屏短时也占满整屏，免得下面露出一段底色断层 */
         margin: 0;
         border: 0;
         border-radius: 0;
@@ -954,3 +962,69 @@
         flex: 1 1 calc((100% - 6px) / 2);
     }
 }
+
+/* ================= 细滚动条 =================
+   为什么要自己写：默认滚动条在桌面 Windows 上占 15–17px 布局宽度，在"整页填满"的浮层里
+   就是一条很宽的槽，页面边缘还会透出后面那层界面（用户手机端反馈："右侧滚动条太宽，
+   滚动时边缘会露出后面那层完全透明的界面"）。
+   6px 是"还看得出我在第几屏"的下限，再细（<4px）在深色主题下基本看不见。
+   Firefox 走 scrollbar-width / scrollbar-color；Chromium/Safari 走 ::-webkit-scrollbar。
+   注意：两个属性要写在**同一个元素**上 —— 只写 scrollbar-width: thin 在 Chromium 里约 8–11px，
+   想要精确 6px 必须同时写 ::-webkit-scrollbar { width: 6px }。
+   覆盖式滚动条的环境（iOS / Android）这些规则基本不生效，但也不会让界面变坏。 */
+.cardlore_popup,
+.cardlore_body,
+.cardlore_ai_settings_body,
+.cardlore_input,
+.cardlore_expand_input,
+.cardlore_ai_prompt,
+.cardlore_block {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(127, 127, 127, 0.5) transparent;
+}
+
+.cardlore_popup::-webkit-scrollbar,
+.cardlore_body::-webkit-scrollbar,
+.cardlore_ai_settings_body::-webkit-scrollbar,
+.cardlore_input::-webkit-scrollbar,
+.cardlore_expand_input::-webkit-scrollbar,
+.cardlore_ai_prompt::-webkit-scrollbar,
+.cardlore_block::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.cardlore_popup::-webkit-scrollbar-track,
+.cardlore_body::-webkit-scrollbar-track,
+.cardlore_ai_settings_body::-webkit-scrollbar-track,
+.cardlore_input::-webkit-scrollbar-track,
+.cardlore_expand_input::-webkit-scrollbar-track,
+.cardlore_ai_prompt::-webkit-scrollbar-track,
+.cardlore_block::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* 滑块用中性灰而不是某个主题变量：它要同时在浅色/深色主题下都看得清，
+   而主题里没有"滚动条颜色"这种通用变量；半透明灰在两种底色上都成立。 */
+.cardlore_popup::-webkit-scrollbar-thumb,
+.cardlore_body::-webkit-scrollbar-thumb,
+.cardlore_ai_settings_body::-webkit-scrollbar-thumb,
+.cardlore_input::-webkit-scrollbar-thumb,
+.cardlore_expand_input::-webkit-scrollbar-thumb,
+.cardlore_ai_prompt::-webkit-scrollbar-thumb,
+.cardlore_block::-webkit-scrollbar-thumb {
+    background: rgba(127, 127, 127, 0.5);
+    border-radius: 3px;
+}
+
+.cardlore_popup::-webkit-scrollbar-thumb:hover,
+.cardlore_body::-webkit-scrollbar-thumb:hover,
+.cardlore_ai_settings_body::-webkit-scrollbar-thumb:hover,
+.cardlore_input::-webkit-scrollbar-thumb:hover,
+.cardlore_expand_input::-webkit-scrollbar-thumb:hover,
+.cardlore_ai_prompt::-webkit-scrollbar-thumb:hover,
+.cardlore_block::-webkit-scrollbar-thumb:hover {
+    background: rgba(127, 127, 127, 0.75);
+}
+
+/* ⚠ 不要顺手加 scrollbar-gutter: stable：它会让内容整体让出一条固定宽度，反而破坏"铺满"。 */
