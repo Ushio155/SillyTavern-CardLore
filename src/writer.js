@@ -10,7 +10,7 @@
  *     不触碰 create_save/DOM，天然规避「编辑模式 vs 新建模式」状态问题。
  */
 import { getRequestHeaders, name1, getCharacters } from '../../../../../script.js';
-import { saveWorldInfo, updateWorldInfoList, getFreeWorldName } from '../../../../world-info.js';
+import { saveWorldInfo, updateWorldInfoList, getFreeWorldName, deleteWorldInfo } from '../../../../world-info.js';
 
 /**
  * @param {object} params
@@ -38,27 +38,53 @@ export async function applyToST({ createSave, cardData, worldBook, settings, onP
     }
 
     // 3) 导入角色卡（JSON）
-    onProgress('导入角色卡…');
-    const file = new File([JSON.stringify(cardData, null, 2)], `${createSave.name}.json`, { type: 'application/json' });
-    const formData = new FormData();
-    formData.append('avatar', file);
-    formData.append('file_type', 'json');
-    formData.append('user_name', name1);
+    // ⚠️ 这一段失败必须把第 1 步刚建的世界书删掉。顺序是「先存书、再导卡」，中间失败时原来
+    //    什么都不回滚 —— 用户的世界书列表里会留下一本**没有任何角色指向**的孤儿书，
+    //    而且它名字带 (1)，下次再应用又会新建一本 (2)，一轮一轮攒下去。
+    try {
+        onProgress('导入角色卡…');
+        const file = new File([JSON.stringify(cardData, null, 2)], `${createSave.name}.json`, { type: 'application/json' });
+        const formData = new FormData();
+        formData.append('avatar', file);
+        formData.append('file_type', 'json');
+        formData.append('user_name', name1);
 
-    const response = await fetch('/api/characters/import', {
-        method: 'POST',
-        headers: getRequestHeaders({ omitContentType: true }),
-        body: formData,
-        cache: 'no-cache',
-    });
+        const response = await fetch('/api/characters/import', {
+            method: 'POST',
+            headers: getRequestHeaders({ omitContentType: true }),
+            body: formData,
+            cache: 'no-cache',
+        });
 
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || result.error) {
-        throw new Error(result.error || `角色卡导入失败（HTTP ${response.status}）`);
+        const result = await response.json().catch(() => ({}));
+        // ST 的失败分支是 `response.send({ error: true })`（error 是布尔），所以不能只把它拼进消息里
+        if (!response.ok || result.error || !result.file_name) {
+            throw new Error(
+                typeof result.error === 'string'
+                    ? result.error
+                    : `角色卡导入失败（HTTP ${response.status}）`,
+            );
+        }
+
+        await getCharacters();
+        return { avatar: `${result.file_name}.png`, bookName };
+    } catch (err) {
+        if (bookName) {
+            onProgress(`角色卡导入失败，回滚世界书「${bookName}」…`);
+            try {
+                const removed = await deleteWorldInfo(bookName);
+                if (!removed) {
+                    console.warn('[CardLore] 世界书回滚未生效（deleteWorldInfo 返回 false）', bookName);
+                    err.message = `${err.message}（另：世界书「${bookName}」未能自动回滚，请手动删除）`;
+                }
+            } catch (rollbackErr) {
+                // 回滚失败不能盖掉原始错误，但要留痕，让用户知道要去手动清一本
+                console.error('[CardLore] 世界书回滚失败', rollbackErr);
+                err.message = `${err.message}（另：世界书「${bookName}」回滚失败，请手动删除）`;
+            }
+        }
+        throw err;
     }
-
-    await getCharacters();
-    return { avatar: `${result.file_name}.png`, bookName };
 }
 
 /** 下载 JSON 文件（导出路径） */

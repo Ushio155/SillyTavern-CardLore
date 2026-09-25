@@ -176,10 +176,21 @@ let lastAiNote = '';
 
 jQuery(async function () {
     const settings = (extension_settings[MODULE_NAME] = extension_settings[MODULE_NAME] || {});
-    Object.assign(settings, DEFAULT_SETTINGS, settings);
+    // ⚠️ 只补齐**缺失**字段，绝不能把默认值盖到已存值上。
+    // 曾经的写法是 `Object.assign(settings, DEFAULT_SETTINGS, settings)` —— 第三个参数就是 target 本身，
+    // 而它此时已经被默认值覆盖过了，所以那次回填是**空操作**：结果是 `bookNameSuffix` /
+    // `confirmBeforeCreate` 每次加载都被重置为默认值，并在下一次 saveSettings 时把默认值写回磁盘，
+    // 用户改的命名后缀会**永久丢失**。对照组：下面 `settings.ai` 的写法是对的（target 是新的 `{}`）。
+    for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
+        if (settings[key] === undefined) settings[key] = value;
+    }
     settings.ai = Object.assign({}, DEFAULT_AI_SETTINGS, settings.ai || {});
-    // 默认提示词升级迁移：版本号不一致时用新版默认提示词覆盖（用户自定义的会随「重置默认提示词」找回）
+    // 默认提示词升级迁移：版本号不一致时用新版默认提示词覆盖。
+    // 被顶掉的旧提示词先留一份副本（用户改过提示词时这就是唯一的找回途径；「重置默认提示词」只会恢复默认值，找不回它）
     if (settings.ai.promptVersion !== DEFAULT_AI_PROMPT_VERSION) {
+        if (settings.ai.prompt && settings.ai.prompt !== DEFAULT_AI_PROMPT) {
+            settings.ai.promptSuperseded = settings.ai.prompt;
+        }
         settings.ai.prompt = DEFAULT_AI_PROMPT;
         settings.ai.promptVersion = DEFAULT_AI_PROMPT_VERSION;
     }
@@ -334,6 +345,7 @@ function openPopup() {
                         <div id="cardlore_apply" class="menu_button menu_button_primary">应用：创建角色+世界书</div>
                         <div id="cardlore_export" class="menu_button">导出 JSON</div>
                         <div id="cardlore_clear" class="menu_button"><i class="fa-solid fa-eraser"></i>&nbsp;清空预览</div>
+                        <div id="cardlore_cancel" class="menu_button" style="display:none;" title="中断正在进行的 AI 适配"><i class="fa-solid fa-ban"></i>&nbsp;取消</div>
                     </div>
                     <div class="cardlore_ai_settings">
                         <div id="cardlore_ai_toggle" class="cardlore_ai_toggle"><i class="fa-solid fa-gear"></i>&nbsp;AI 接口设置（可折叠）<span id="cardlore_ai_mode_badge" class="cardlore_ai_mode_badge"></span></div>
@@ -409,6 +421,7 @@ function openPopup() {
     $('#cardlore_apply').on('click', onApply);
     $('#cardlore_export').on('click', onExport);
     $('#cardlore_clear').on('click', onClearPreview);
+    $('#cardlore_cancel').on('click', onCancelBusy);
 
     // 展开全屏编辑：打开时同步文本，编辑实时写回主输入框，Esc / 「完成」收起
     const $expandOverlay = $('#cardlore_expand_overlay');
@@ -789,6 +802,57 @@ function combinedInputText() {
     return parts.join('\n\n');
 }
 
+/* ---------------- AI 适配的超时与取消 ---------------- */
+
+/**
+ * 单次 AI 请求的超时上限。超时按「本次请求失败」处理（不是整轮失败），
+ * 因此后面守卫该重试还能重试，只是不会无限期挂着。
+ * 为什么必须有：AI 适配的耗时是几十秒量级，模型/网关挂住时原来的实现没有任何中断手段，
+ * 界面会永久停在"正在整理文本…"，用户只能刷新页面。
+ */
+const AI_REQUEST_TIMEOUT_MS = 180000;
+
+/** 当前这一轮 AI 适配的中断控制器（null = 没有可中断的任务） */
+let aiAbort = null;
+
+/**
+ * 合成一个「父信号取消 **或** 超时」都会中断的信号。
+ * 不用 `AbortSignal.any` / `AbortSignal.timeout`：两者都偏新，插件要能在旧一些的 ST 内嵌浏览器里跑。
+ * 返回的 `done()` 必须调用，否则每次重试都会漏一个定时器和一个监听器。
+ */
+function linkedAbortSignal(parent, ms) {
+    const ctrl = new AbortController();
+    const onAbort = () => ctrl.abort(parent?.reason ?? new DOMException('aborted', 'AbortError'));
+    if (parent?.aborted) onAbort();
+    else parent?.addEventListener('abort', onAbort, { once: true });
+    const timer = setTimeout(() => ctrl.abort(new DOMException('请求超时', 'TimeoutError')), ms);
+    return {
+        signal: ctrl.signal,
+        done: () => { clearTimeout(timer); parent?.removeEventListener('abort', onAbort); },
+    };
+}
+
+/** 中断/超时导致的失败：文案要和真失败区分开，否则用户以为插件坏了 */
+function isAbortError(err) {
+    if (err?.name === 'AbortError' || err?.name === 'TimeoutError') return true;
+    return /aborted|abort|请求超时|TimeoutError/i.test(String(err?.message ?? ''));
+}
+
+function describeAbortError(err, timeoutMs = AI_REQUEST_TIMEOUT_MS) {
+    return err?.name === 'TimeoutError' || /请求超时/.test(String(err?.message ?? ''))
+        ? `AI 请求超时（超过 ${Math.round(timeoutMs / 1000)} 秒没有响应），已中止。可以重试，或换一个更快的模型。`
+        : '已取消本次 AI 适配。';
+}
+
+/** 「取消」按钮：只对挂得上 AbortController 的阶段有效 */
+function onCancelBusy() {
+    if (!aiAbort) {
+        setStatus('当前阶段无法中断（世界书/角色卡正在写入 ST），请稍候。', 'warn');
+        return;
+    }
+    aiAbort.abort(new DOMException('用户取消', 'AbortError'));
+}
+
 function onAiConvert() {
     const text = combinedInputText();
     if (!text.trim()) {
@@ -816,12 +880,14 @@ function onAiConvert() {
     }
 
     (async () => {
+        aiAbort = new AbortController();
+        const signal = aiAbort.signal;
         try {
             setBusy(true, useSt
-                ? `AI 正在整理文本（ST「API 连接」· ${st.model}）…`
-                : 'AI 正在整理文本…');
+                ? `AI 正在整理文本（ST「API 连接」· ${st.model}）…（可点「取消」中断）`
+                : 'AI 正在整理文本…（可点「取消」中断）');
             const mergedCount = materials.length;
-            const res = await aiConvert(text, ai, useSt);
+            const res = await aiConvert(text, ai, useSt, signal);
             $('#cardlore_input').val(res.text);
             // 素材内容已并入整理结果（写回输入框），清空素材列表防止再次合并造成重复
             if (mergedCount) {
@@ -844,11 +910,18 @@ function onAiConvert() {
             setStatus(lastAiNote, res.guardPassed && !res.lowRetention ? 'info' : 'warn');
             onParse();
         } catch (err) {
+            // 取消 / 超时不是"失败"，别弹 toastr 吓人，也别给"换接口"的建议
+            if (isAbortError(err)) {
+                console.warn('[CardLore] AI convert interrupted', err);
+                setStatus(describeAbortError(err), 'warn');
+                return;
+            }
             console.error('[CardLore] AI convert failed', err);
             const tip = useSt ? '' : '（若这个接口不可用，可在「AI 接口设置 → 调用方式」切到「使用 ST 当前连接」）';
             setStatus(`AI 适配失败：${err.message || err}${tip}`, 'error');
             toastr.error(String(err.message || err), 'CardLore AI');
         } finally {
+            aiAbort = null;
             setBusy(false);
         }
     })();
@@ -866,11 +939,12 @@ function onAiConvert() {
  * @param {string} rawText 原始文本
  * @param {object} ai CardLore AI 设置
  * @param {boolean} useSt true = 通过 ST「API 连接」发送；false = 直连自定义 OpenAI 兼容接口
+ * @param {AbortSignal?} signal 整轮中断信号（用户点「取消」）；单次请求的超时在两条通道里各自叠加
  * @returns {Promise<{text: string, guardPassed: boolean, lowRetention: boolean, retention: number, repaired: boolean, continued: boolean, nameFixed: ?{from: string, to: string}, nameWarning: string}>}
  */
-async function aiConvert(rawText, ai, useSt) {
+async function aiConvert(rawText, ai, useSt, signal = null) {
     const promptText = ai.prompt || DEFAULT_AI_PROMPT;
-    const send = (msgs) => (useSt ? aiConvertViaSt(msgs) : aiConvertDirect(msgs, ai));
+    const send = (msgs) => (useSt ? aiConvertViaSt(msgs, signal) : aiConvertDirect(msgs, ai, signal));
 
     let text = '';
     let truncatedSignal = false;
@@ -959,7 +1033,7 @@ async function aiConvert(rawText, ai, useSt) {
  * 直接复用 ST「API 连接」的来源、模型、额度与已保存的 Key，用户无需在插件里再填任何凭据。
  * @param {{role: string, content: string}[]} messages 分层消息
  */
-async function aiConvertViaSt(messages) {
+async function aiConvertViaSt(messages, signal = null) {
     const st = stConnectionInfo();
     if (!st.ok) throw new Error('ST「API 连接」里没有可用的模型，请先设置');
 
@@ -994,7 +1068,16 @@ async function aiConvertViaSt(messages) {
         openrouter_allow_fallbacks: s.openrouter_allow_fallbacks,
     };
 
-    const result = await service.processRequest(payload, {}, true);
+    const result = await (async () => {
+        const linked = linkedAbortSignal(signal, AI_REQUEST_TIMEOUT_MS);
+        try {
+            // 第 4 个参数就是 AbortSignal（custom-request.js: ChatCompletionService.processRequest(data, options, extractData, signal)），
+            // 一路透传到 sendOpenAIRequest 的 fetch —— 所以这里的取消是**真的**掐断请求，不是只停止等待
+            return await service.processRequest(payload, {}, true, linked.signal);
+        } finally {
+            linked.done();
+        }
+    })();
     const content = typeof result === 'string' ? result : result?.content;
     // 空内容不再直接抛错：交给 aiConvert 的守卫触发一次修复重试（推理模型偶尔把预算全用在思维链上）
     if (typeof content !== 'string' || !content.trim()) {
@@ -1010,21 +1093,29 @@ async function aiConvertViaSt(messages) {
  * 直连用户填写的 OpenAI 兼容接口（chat/completions）
  * @param {{role: string, content: string}[]} messages 分层消息
  * @param {object} ai CardLore AI 设置
+ * @param {AbortSignal?} signal 整轮中断信号（用户点「取消」）
  */
-async function aiConvertDirect(messages, ai) {
+async function aiConvertDirect(messages, ai, signal = null) {
     const url = normalizeChatUrl(ai.apiUrl);
     const headers = { 'Content-Type': 'application/json' };
     if (ai.apiKey) headers['Authorization'] = `Bearer ${ai.apiKey}`;
 
-    const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-            model: ai.model,
-            messages,
-            temperature: 0.3,
-        }),
-    });
+    const linked = linkedAbortSignal(signal, AI_REQUEST_TIMEOUT_MS);
+    let response;
+    try {
+        response = await fetch(url, {
+            method: 'POST',
+            headers,
+            signal: linked.signal,
+            body: JSON.stringify({
+                model: ai.model,
+                messages,
+                temperature: 0.3,
+            }),
+        });
+    } finally {
+        linked.done();
+    }
 
     if (!response.ok) {
         const errText = await response.text().catch(() => '');
@@ -1084,6 +1175,10 @@ function setStatus(text, type = 'info') {
 
 function setBusy(busy, text) {
     $('#cardlore_ai, #cardlore_parse, #cardlore_apply, #cardlore_export, #cardlore_clear, #cardlore_expand, #cardlore_expand_parse, #cardlore_expand_close, #cardlore_import_material, #cardlore_import_add, #cardlore_import_clear').prop('disabled', busy).toggleClass('disabled', busy);
+    // 「取消」只在**真的可中断**时出现：AI 适配挂了 AbortController，写盘阶段没有 ——
+    // 一个点了没用的按钮比没有按钮更糟（用户会以为卡死了）
+    const cancellable = Boolean(busy) && Boolean(aiAbort);
+    $('#cardlore_cancel').toggle(cancellable).prop('disabled', !cancellable).toggleClass('disabled', !cancellable);
     if (text) setStatus(text, 'info');
 }
 
