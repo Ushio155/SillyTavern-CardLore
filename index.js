@@ -345,7 +345,6 @@ function openPopup() {
                         <div id="cardlore_apply" class="menu_button menu_button_primary">应用：创建角色+世界书</div>
                         <div id="cardlore_export" class="menu_button">导出 JSON</div>
                         <div id="cardlore_clear" class="menu_button"><i class="fa-solid fa-eraser"></i>&nbsp;清空预览</div>
-                        <div id="cardlore_cancel" class="menu_button" style="display:none;" title="中断正在进行的 AI 适配"><i class="fa-solid fa-ban"></i>&nbsp;取消</div>
                     </div>
                     <div class="cardlore_ai_settings">
                         <div id="cardlore_ai_toggle" class="cardlore_ai_toggle"><i class="fa-solid fa-gear"></i>&nbsp;AI 接口设置（可折叠）<span id="cardlore_ai_mode_badge" class="cardlore_ai_mode_badge"></span></div>
@@ -416,12 +415,23 @@ function openPopup() {
         reRenderMaterials();
         setStatus(materials.length ? `已移除素材，剩余 ${materials.length} 个。` : '已移除素材。', 'info');
     });
-    $('#cardlore_ai').on('click', onAiConvert);
+    // 「AI 适配」是**双态按钮**：空闲 = 开始适配，进行中 = 取消。
+    // 为什么不另加一个「取消」按钮：≤640px 的工具栏是按**5 个按钮**硬编码 order/flex 的
+    // 三等宽两行布局（第一行 AI适配/解析预览/清空预览，第二行 导出JSON/应用），
+    // 多出来的按钮没有 order 就是 `order:0`，会插到 AI 适配**前面**把整行挤错位。
+    // 原地换文字 + 换图标则按钮数量恒定，PC 与手机的排列一个字都不用改。
+    $('#cardlore_ai').on('click', () => {
+        if (aiAbort) { onCancelBusy(); return; }
+        // 写盘阶段按钮是 `.disabled`（CSS 的 pointer-events:none 挡真实点击）；
+        // 这里再挡一道程序化点击，免得在写入 ST 的过程中又发起一轮 AI 适配
+        if ($('#cardlore_ai').hasClass('disabled')) return;
+        onAiConvert();
+    });
     $('#cardlore_parse').on('click', onParse);
     $('#cardlore_apply').on('click', onApply);
     $('#cardlore_export').on('click', onExport);
     $('#cardlore_clear').on('click', onClearPreview);
-    $('#cardlore_cancel').on('click', onCancelBusy);
+    renderAiButton();   // 以脚本为准复位双态按钮（静态 HTML 里也是空闲态，这里只是保证一致）
 
     // 展开全屏编辑：打开时同步文本，编辑实时写回主输入框，Esc / 「完成」收起
     const $expandOverlay = $('#cardlore_expand_overlay');
@@ -844,12 +854,31 @@ function describeAbortError(err, timeoutMs = AI_REQUEST_TIMEOUT_MS) {
         : '已取消本次 AI 适配。';
 }
 
-/** 「取消」按钮：只对挂得上 AbortController 的阶段有效 */
+/** 「AI 适配」按钮的双态渲染：进行中显示「取消」，空闲显示「AI 适配」。
+ *  图标随之切换（机器人 → 禁止符）：文字换成"取消"却还挂着机器人图标会让人不知所云；
+ *  配色**保持不变**（仍是琥珀色 `#f2c94c`），这样它在工具栏里始终是同一个按钮。 */
+function renderAiButton() {
+    const busy = Boolean(aiAbort);
+    $('#cardlore_ai')
+        .html(busy
+            ? '<i class="fa-solid fa-ban"></i>&nbsp;取消'
+            : '<i class="fa-solid fa-robot"></i>&nbsp;AI 适配')
+        .attr('title', busy ? '中断正在进行的 AI 适配' : '把原始文本交给 AI 整理成本插件格式')
+        .toggleClass('cardlore_ai_busy', busy);
+}
+
+/** 取消键的处理器：它现在就是「AI 适配」按钮本身 */
 function onCancelBusy() {
     if (!aiAbort) {
+        // 理论上点不到（不可中断时按钮是禁用的），留个兜底
         setStatus('当前阶段无法中断（世界书/角色卡正在写入 ST），请稍候。', 'warn');
         return;
     }
+    // 立刻给反馈：请求真正中断前还有一小段收尾时间，这期间按钮不该再能点
+    $('#cardlore_ai')
+        .html('<i class="fa-solid fa-spinner fa-spin"></i>&nbsp;取消中…')
+        .prop('disabled', true).addClass('disabled');
+    setStatus('正在中断 AI 适配…', 'warn');
     aiAbort.abort(new DOMException('用户取消', 'AbortError'));
 }
 
@@ -1174,11 +1203,12 @@ function setStatus(text, type = 'info') {
 }
 
 function setBusy(busy, text) {
-    $('#cardlore_ai, #cardlore_parse, #cardlore_apply, #cardlore_export, #cardlore_clear, #cardlore_expand, #cardlore_expand_parse, #cardlore_expand_close, #cardlore_import_material, #cardlore_import_add, #cardlore_import_clear').prop('disabled', busy).toggleClass('disabled', busy);
-    // 「取消」只在**真的可中断**时出现：AI 适配挂了 AbortController，写盘阶段没有 ——
-    // 一个点了没用的按钮比没有按钮更糟（用户会以为卡死了）
     const cancellable = Boolean(busy) && Boolean(aiAbort);
-    $('#cardlore_cancel').toggle(cancellable).prop('disabled', !cancellable).toggleClass('disabled', !cancellable);
+    $('#cardlore_parse, #cardlore_apply, #cardlore_export, #cardlore_clear, #cardlore_expand, #cardlore_expand_parse, #cardlore_expand_close, #cardlore_import_material, #cardlore_import_add, #cardlore_import_clear').prop('disabled', busy).toggleClass('disabled', busy);
+    // 「AI 适配」在**可中断**时必须保持可点 —— 它就是取消键；不可中断的阶段（写盘）照旧禁用。
+    // 点了没用的按钮比没有按钮更糟，所以两种状态分得很清楚。
+    $('#cardlore_ai').prop('disabled', busy && !cancellable).toggleClass('disabled', busy && !cancellable);
+    renderAiButton();
     if (text) setStatus(text, 'info');
 }
 

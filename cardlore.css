@@ -26,6 +26,24 @@
     color: #ffd76a !important;
 }
 
+/* 「AI 适配」进入"可点击取消"状态：配色**不变**（仍是琥珀色），只加一点很轻的呼吸感，
+   让它看起来"在跑、而且能停"。按钮数量与尺寸都不变 ⇒ PC 与手机的两行工具栏布局一个字都不用改。
+   不想要动效的话删掉下面这一条 animation 即可（文字本身已经从「AI 适配」变成「取消」）。 */
+#cardlore_ai.cardlore_ai_busy {
+    animation: cardlore_ai_busy_pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes cardlore_ai_busy_pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #cardlore_ai.cardlore_ai_busy {
+        animation: none;
+    }
+}
+
 /* 「清空预览」：红底白字（重置 grayscale 滤镜 + !important 防主题覆盖） */
 #cardlore_clear {
     background: #d94b4b !important;
