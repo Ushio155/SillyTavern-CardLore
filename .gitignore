@@ -10,3 +10,6 @@ Thumbs.db
 
 # 本地安装副本（本目录即插件本体，无需额外 data）
 data/
+
+# dsh-code-index 缓存（DSH 插件 dsh-code-index 在本仓库生成的符号索引）
+.dsh-code-index/
