@@ -24,7 +24,8 @@ import {
     isConversionOutput,
     pickBetterOutput,
     looksTruncated,
-    mergeContinuation,
+    acceptContinuation,
+    stripCodeFence,
     isFaithfulConversion,
     retentionRatio,
     MIN_RETENTION,
@@ -917,6 +918,15 @@ function onAiConvert() {
                 : 'AI 正在整理文本…（可点「取消」中断）');
             const mergedCount = materials.length;
             const res = await aiConvert(text, ai, useSt, signal);
+            // 结构守卫没过 = 模型没在转换（跑偏/照素材模板作答/吐素材碎片）。
+            // 这时**绝不能**写回输入框：输入框里的原文是用户手上唯一的一份素材，写回会把它覆盖掉，
+            // 还会顺手清空素材文件列表（应用后无法复原），而写进去的东西本身不可用。保留原文，让用户直接重试。
+            if (!res.guardPassed) {
+                console.warn('[CardLore] 模型输出未通过结构守卫，已保留原始输入。模型输出 >>>', res.text);
+                setStatus(`AI 适配失败：模型输出没有落在固定字段结构内（${res.text.length} 字），已保留你的原文与素材文件，可直接重试或换个模型。`, 'error');
+                toastr.warning('输出结构不合格式，已保留你的原文（可直接重试或换模型）', 'CardLore AI');
+                return;
+            }
             $('#cardlore_input').val(res.text);
             // 素材内容已并入整理结果（写回输入框），清空素材列表防止再次合并造成重复
             if (mergedCount) {
@@ -931,12 +941,11 @@ function onAiConvert() {
             if (res.continued) notes.push('检测到截断，已自动续写');
             if (res.nameFixed) notes.push(`「名称」已按素材卡名校正为「${res.nameFixed.to}」`);
             if (res.nameWarning) notes.push(res.nameWarning);
-            if (!res.guardPassed) notes.push('输出结构可能仍不合格式，建议再点一次或换模型');
-            else if (res.lowRetention) notes.push(`输出与素材文字重合度偏低（${(res.retention * 100).toFixed(0)}%），可能改写过多，请核对`);
+            if (res.lowRetention) notes.push(`输出与素材文字重合度偏低（${(res.retention * 100).toFixed(0)}%），可能改写过多，请核对`);
             const noteText = notes.length ? `（${notes.join('；')}）` : '';
             // 解析状态会紧接着覆盖状态栏，这里把「AI 适配」来源交给 onParse 一并显示，避免信息一闪而过
             lastAiNote = `AI 适配完成（${via}${merge}）${noteText}。`;
-            setStatus(lastAiNote, res.guardPassed && !res.lowRetention ? 'info' : 'warn');
+            setStatus(lastAiNote, res.lowRetention ? 'warn' : 'info');
             onParse();
         } catch (err) {
             // 取消 / 超时不是"失败"，别弹 toastr 吓人，也别给"换接口"的建议
@@ -962,9 +971,11 @@ function onAiConvert() {
  *       ② 输出没落在固定字段结构内（把素材当指令执行、照素材模板作答、空输出）→ 追加修正层重试，最多 3 次
  *          （空输出用 EMPTY_OUTPUT_SUFFIX，其余用 REPAIR_SYSTEM_SUFFIX）
  *       ③ 结构对但内容几乎全是新编的（忠实度低于 MIN_RETENTION）→ 同样重试
- *       ④ 末尾像被 max_tokens 截断 → 追加一次续写
+ *       ④ 已经合格（结构守卫通过）且末尾像被 max_tokens 截断 → 追加一次续写；
+ *          拼接后若不再是合格结果（acceptContinuation）就丢弃这次续写
  *       ⑤ 多次结果取「字段命中 → 素材保留率」更优的一份
  *       ⑥ 名称守卫：素材有显式卡名/作品名时，把被模型写成用户角色名的「名称」校正回来
+ *       ⑦ 守卫仍没通过时**不写回输入框**（见 onAiConvert），原文与素材列表都保持原样
  * @param {string} rawText 原始文本
  * @param {object} ai CardLore AI 设置
  * @param {boolean} useSt true = 通过 ST「API 连接」发送；false = 直连自定义 OpenAI 兼容接口
@@ -1006,7 +1017,9 @@ async function aiConvert(rawText, ai, useSt, signal = null) {
     }
 
     // 守卫二：末尾被截断 → 续写一次并拼接
-    if (text.trim() && (looksTruncated(text) || truncatedSignal)) {
+    // 只在"已经是一份合格转换结果"时续写：结构本来就不对时再接一段，只会把素材碎片越粘越多。
+    // 拼接本身还要过 acceptContinuation（续写内容会把结构写坏就丢弃）。
+    if (isConversionOutput(text) && (looksTruncated(text) || truncatedSignal)) {
         console.warn('[CardLore] AI 输出疑似被截断，尝试续写');
         try {
             const msgs = [
@@ -1015,7 +1028,7 @@ async function aiConvert(rawText, ai, useSt, signal = null) {
                 { role: 'user', content: CONTINUE_INSTRUCTION },
             ];
             const tailRes = await send(msgs);
-            const merged = mergeContinuation(text, tailRes.content);
+            const merged = acceptContinuation(text, tailRes.content);
             if (merged !== text) {
                 text = merged;
                 continued = true;
@@ -1160,12 +1173,6 @@ async function aiConvertDirect(messages, ai, signal = null) {
         return { content: '', truncated: true };
     }
     return { content: stripCodeFence(content.trim()), truncated };
-}
-
-/** 去掉 AI 返回内容外层的 ``` 代码块围栏 */
-function stripCodeFence(content) {
-    const m = content.match(/```(?:\w+)?\s*([\s\S]*?)```/);
-    return m ? m[1].trim() : content;
 }
 
 /** 归一化 OpenAI 兼容接口地址：自动补 /chat/completions */
